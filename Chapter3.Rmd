@@ -1,0 +1,44 @@
+---
+title: "Chapter 3"
+author: "Anita Kurm"
+date: "February 17, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#wd
+setwd("C:/Users/JARVIS/Desktop/Uni/Semester 4/Computational modelling/Statistical-Rethinking")
+
+#libraries
+pacman::p_load(readr,groupdata2,ggplot2,tidyverse,data.table, rethinking)
+```
+
+Bayes' Theorem on a vampire example: 
+  probability of one being a vampire given positive test for vampirism equals (Probability of a positive result given that the one is actually a vampire multiplied by probability of encountering a vampire in the entire population) divided by the average probability of a positive result  
+
+    the average probability of a positive test result is calculated by:
+      (probabilty of a positive result given that one is a vampire multiplied by probability of encountering a vampire in the population) + (probability of a positive result given that one is mortal multiplied by the probability of encountering mortals in the population)
+      i.e. probability of true positives + probability of false positives
+
+                       Pr(positive|vampire)*Pr(vampire)    Pr(positive|vampire)*Pr(vampire)
+Pr(vampire|positive) = -------------------------------- = -------------------------------- 
+                               Pr(positive)               Pr(positive|vampire)*Pr(vampire)+ 
+                                                          Pr(positive|mortal)*Pr(mortal)
+                                                          
+                                                          Pr(mortal)= 1-Pr(vampire) duh... 
+                                                          
+```{r}
+PrPV<-0.95 #test correctly detects vampirism 95% of the time
+PrPM<-0.01 #false positives, 1% of the time it diagnoses normal people with vampirism
+PrV<-0.001 #vampires are rare,only 0.001 of population
+PrP<-PrPV*PrV+PrPM*(1-PrV)
+
+(PrVP<-PrPV*PrV/PrP)
+```
+
+```{r}
+#Performing calculation
+```
+

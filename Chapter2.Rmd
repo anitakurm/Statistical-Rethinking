@@ -1,0 +1,223 @@
+---
+title: "Chapter 2"
+author: "Anita Kurm"
+date: "February 17, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#wd
+setwd("C:/Users/JARVIS/Desktop/Uni/Semester 4/Computational modelling/Statistical-Rethinking")
+
+#libraries
+pacman::p_load(readr,groupdata2,ggplot2,tidyverse,data.table, rethinking)
+
+#calculate plausibilities
+ways<-c(0,3,8,9,0)
+ways/sum(ways)
+
+```
+Tiny globe tosses example: The count of w ("water" observations) is distributed binomially, with p (probability) of "water" on each toss and n tosses in total.
+```{r}
+#using binomial distribution formula to compute the likelihood of data:6 W's in 9 tosses - under value of p at 0.5
+dbinom(6, size = 9, prob = 0.5 ) #0.164
+
+#same, but other p values
+dbinom(6, size = 9, prob = 0.1 ) #0.0000612
+dbinom(6, size = 9, prob = 0.2 ) #0.0027
+dbinom(6, size = 9, prob = 0.3 ) #0.021
+dbinom(6, size = 9, prob = 0.6 ) #0.25
+dbinom(6, size = 9, prob = 0.7 ) #0.26
+dbinom(6, size = 9, prob = 0.9 ) #0.044
+dbinom(6, size = 9, prob = 0.99 ) #0.000079
+dbinom(6, size = 9, prob = 1.0 ) #0
+
+
+```
+
+Posterior = (Likelihood*Prior)/Average Likelihood
+
+
+Grid approximation - simplest conditioning tecnhique. At any partyicular value of a parameter p', compute the posterior probability: multiply the prior probability p' by the likelihood at p'. Repeating this procedure for each value in the grid generates an approximate picture of the exact posterior distribution
+1) define the grid: how many points to use in estimating posterior -> you make a list of the parameter values on the grid
+2) compute the value of the prior at each parameter value on the grid
+3) compute the likelihood at each parameter value
+4) compute the unstandardized posterior at each parameter value, by multiplying the prior by the likelihood
+5) Finally, standardize the posterior,  by dividing each value by the sum of all values
+
+Example on the globe tossing context:
+I) Flat Prior: it's probability of 1 for each of the 20 grid points. Flat prior constructs the posterior that is simply proportional to the likelihood
+```{r}
+#define grid
+p_grid<- seq(from=0, to=1, length.out=20)
+
+#define prior, flat prior in this case
+prior<- rep(1,20)
+
+#compute likelihood at each value in grid
+likelihood<- dbinom(6, size = 9, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+plot(p_grid, posterior, type="b", xlab="probability of water", ylab="posterior probability")
+mtext("20 points")
+```
+Now we'll try different priors.
+II) Step prior: assigning zero probability to all values less than 0.5, resulting in a truncated posterior 
+```{r}
+#define grid
+p_grid<- seq(from=0, to=1, length.out=20)
+
+#define prior, step prior in this case
+prior<- ifelse(p_grid<0.5, 0, 1)
+
+#compute likelihood at each value in grid
+likelihood<- dbinom(6, size = 9, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+plot(p_grid, posterior, type="b", xlab="probability of water", ylab="posterior probability")
+mtext("20 points")
+```
+
+
+III) Peaked prior: shifts and skews the posterior, relative to the likelihood
+```{r}
+#define grid
+p_grid<- seq(from=0, to=1, length.out=20)
+
+#define prior, peaked prior in this case, i.e. peaks at 0.5
+prior<- exp(-5*abs(p_grid-0.5))
+
+#compute likelihood at each value in grid
+likelihood<- dbinom(6, size = 9, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+plot(p_grid, posterior, type="b", xlab="probability of water", ylab="posterior probability")
+mtext("20 points")
+```
+The grid approximation strategy scales very poorly with model complexity, so it won't get us very far.
+
+
+Quadratic approximation makes stronger assumptions and is computationally very inexpensive. (a.k.a. Gaussian approximation, cause logarithm og gaussian distribution forms a parabola - quadratic function)
+Under general conditions, the region near the peak of the posterior distribution will be nearly "normal" (Gaussian) in shape -> posterior can be approximated by a Gaussian distribution -> can be completely described by only two numbers: the location of its center (mean) and its spread (variance)
+
+represents any log-posterior with a parabola.
+Just two steps to do it:
+1) Find the posterior mode by some optimization algorithm  (virtually "climbs" the posterior distribution - does not know where the peak is, but knows the slope under, or other optimization procedure that tries tp find peaks)
+2) You found the peak of the posterior -> now estimate the curvature near the peak (either with numeriical technique - like your computer does, or analytically)
+```{r}
+globe.qa<- map( #provide a formula, a list of data, a list of start values for the parameters
+  alist(w~dbinom(9,p), #binomial likelihood
+        p~dunif(0,1) #uniform prior
+        ),
+  data=list(w=6))
+
+#display summary of qudratic approximation
+precis(globe.qa) 
+
+#mean - peak at 0.67
+#stddev - 0.16
+
+#quadratic aaproximation
+curve(dnorm(x,0.67,0.16), lty=2)
+```
+Mean - posterior's  peak,
+stddev - standard deviation of the posterior distribution
+last two values show the 89% percentile interval 
+-> "Assuming the posterior is Gaussian, it is maximized at 0.67, and its standard deviation is 0.16 "
+
+Analytical calculation 
+```{r}
+w<- 6
+n<- 9
+curve(dbeta(x, w+1, n-w+1), from = 0, to= 1)
+#quadratic aaproximation
+curve(dnorm(x,0.67,0.16), lty=2, add = TRUE)
+
+```
+Just doule the amount of data, but save the proportion of water to tosses in total
+
+```{r}
+globe.qa<- map( #provide a formula, a list of data, a list of start values for the parameters
+  alist(w~dbinom(18,p), #binomial likelihood
+        p~dunif(0,1) #uniform prior
+        ),
+  data=list(w=12))
+
+#display summary of qudratic approximation
+precis(globe.qa) 
+
+#mean - peak at 0.67
+#stddev - 0.11
+
+
+#analytical calculation
+w<- 12
+n<- 18
+curve(dbeta(x, w+1, n-w+1), from = 0, to= 1)
+#quadratic aaproximation
+curve(dnorm(x,0.67,0.11), lty=2, add = TRUE)
+```
+
+Now x5 amount of data, but proportions are the same
+```{r}
+globe.qa<- map( #provide a formula, a list of data, a list of start values for the parameters
+  alist(w~dbinom(45,p), #binomial likelihood
+        p~dunif(0,1) #uniform prior
+        ),
+  data=list(w=30))
+
+#display summary of qudratic approximation
+precis(globe.qa) 
+
+#mean - peak at 0.67
+#stddev - 0.07
+
+
+#analytical calculation
+w<- 30
+n<- 45
+curve(dbeta(x, w+1, n-w+1), from = 0, to= 1)
+#quadratic aaproximation
+curve(dnorm(x,0.67,0.07), lty=2, add = TRUE)
+```
+
+got better!!
+
+Practice
+  Easy.
+    2E1.
+    2E2.
+    2E3.
+    2E4.
+  Medium.
+    2M1.
+    2M2.
+    2M3.
+    2M4.
+    2M5.
+    2M6.
+    2M7.
+  Hard.
+    2H1.
+    2H2.
+    2H3.
+    2H4.
+    
+  
