@@ -27,6 +27,7 @@ Pr(vampire|positive) = -------------------------------- = ----------------------
                                Pr(positive)               Pr(positive|vampire)*Pr(vampire)+ 
                                                           Pr(positive|mortal)*Pr(mortal)
                                                           
+                                                          
                                                           Pr(mortal)= 1-Pr(vampire) duh... 
                                                           
 ```{r}
@@ -38,7 +39,142 @@ PrP<-PrPV*PrV+PrPM*(1-PrV)
 (PrVP<-PrPV*PrV/PrP)
 ```
 
+frequency format / natural frequencies:
+1) population=100 000 -> 100 are vampires
+2) 95 out of 100 vampires will test positive (that's the accuracy of the test)
+3) 999 out of the 99,900 mortals will give false positives
+
+                            number of vampires testing positive
+-> Pr(vampire|positive)= ---------------------------------------
+                           total number of positives (mortals+vampires)
 ```{r}
 #Performing calculation
+95/(999+95)
 ```
 
+The results is the same.
+
+
+Posterior is always a probability distribution -> The posterior defines the expected frequency that different parameter values will apear
+ -> we can draw samples from it
+    the sampled events in this case are parameter values
+                
+                Reminder.
+                Parameters: 
+                your Bayesian analysis describes what the data tells about the 
+                unknown parameter(s)
+                       they may be quantitites that we wish to estimate
+                       they represent the different conjectures for causes and explanations 
+                       of the data 
+                       different inputs of the likelihood fucntion may be the targets of 
+                       the analysis 
+                
+                Posterior: the relative plausibility of different parameter values, 
+                conditional on the data
+                      the parameter values near the peak are much more common (and likely 
+                      to produce the data) than parameter values in the tail
+    
+We shall learn basic skills for working with samples (parameter values) from the posterior distribution 
+
+
+1. Sampling from a grid-approximate posterior
+    we scoop a bunch of parameter values from the posterior and assume, that they were well
+    mixed -> the samples will have the same proportions as the exact posterior density
+    i.e. the individual values of parameters will appear in samples in proportion to the 
+    posterior plausibility of each value (we'll have more parameter values from around the 
+    peak, than from the tails)
+```{r}
+#Computing the posterior for the model, using grid approximation (globe tossing model again)
+
+#define grid
+p_grid<- seq(from=0, to=1, length.out=1000)
+
+#define prior, flat prior in this case
+prior<- rep(1,1000)
+
+#compute likelihood at each value in grid
+likelihood<- dbinom(6, size = 9, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+#draw 10 000 samples from the posterior, (10 000= 1e4) 
+samples<- sample(p_grid, prob = posterior, size = 1e4, replace = TRUE) 
+    #sample function randomly pulls values from the vector p_grid
+    #the probability of each value is given by posterior 
+
+#plot samples
+plot(samples)
+```
+      Way more values around 0.6,than around 0.2 or 0.9
+
+```{r}
+#show density estimate
+dens(samples)
+```
+      The estimated density is very similar to the ideal posterior from Chapter 2.
+      Drawing more samples -> estimated density is more and more similar to the ideal            posterior
+      example:
+```{r}
+#define grid
+p_grid<- seq(from=0, to=1, length.out=1000)
+
+#define prior, flat prior in this case
+prior<- rep(1,1000)
+
+#compute likelihood at each value in grid
+likelihood<- dbinom(6, size = 9, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+#draw 10 000 samples from the posterior,(1 000 000= 1e6) read 1 times 10 to the power of 6 
+samples<- sample(p_grid, prob = posterior, size = 1e6, replace = TRUE) 
+    #sample function randomly pulls values from the vector p_grid
+    #the probability of each value is given by posterior 
+
+#plot samples
+plot(samples)
+#show density estimate
+dens(samples)
+```
+        see!!
+
+
+2. Sampling to summarize
+    model's role is to produce a posterior distribution, now you have to summarize and  
+    interpret the posterior distribution
+    
+    Common questions:
+      How much posterior probability lies below some parameter value?
+      How much posterior probability les between two parameter values?
+      Which parameter value marks the lower 5% of the posterior probability?
+      Which range of parameter values contains 90% of the posterior probability?
+      Which parameter value has highest posterior probability?
+      
+   2.1. Intervals of defined boundaries
+```{r}
+#e.g. add up posterior probability where p<0.5
+sum(posterior[p_grid<0.5])
+
+```
+    About 17% of the posterior probability is below 0.5, how do you do that with samples?
+    
+
+   
+   2.2. Intervals of defined mass
+   2.3. Point estimates
+
+3. Sampling to simulate prediction
+   3.1. Dummy data
+   3.2. Model checking
+   
+   
+Practice
+    
