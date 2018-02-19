@@ -326,7 +326,7 @@ rbinom(1,size = 2, prob = 0.7) #r stands for random
 #generating 10 simulations 
 rbinom(10,size = 2, prob = 0.7)
 
-#generating 100,000 dummy observations, to verify that each value appears un proportion to it's likelihood
+#generating 100,000 dummy observations, to verify that each value appears in proportion to it's likelihood
 dummy_w<- rbinom(1e5,size = 2, prob = 0.7)
 table(dummy_w)/1e5
 ```
@@ -336,10 +336,88 @@ table(dummy_w)/1e5
 dummy_w<-rbinom(1e5,size = 9, prob = 0.7)
 simplehist(dummy_w,xlab = "dummy water count")
 ```
-     the most observations 
+     the most of the time the expected observation does not contain water in its true proportion 0.7 <- due to the nature of observation: one-to-many relationship between data and data-generating processes
+     
+     experimenting with the sample size:
+```{r}
+dummy_w<-rbinom(1e5,size = 100, prob = 0.7)
+simplehist(dummy_w,xlab = "dummy water count")
+
+dummy_w<-rbinom(1e5,size = 1e5, prob = 0.7)
+simplehist(dummy_w,xlab = "dummy water count")
+```
+     Now we want to use simulated observations in examining the implied predictions of a model.
+     So, we need to combine them with samples from the posterior distribution.
                                                           
    3.2. Model checking
+        1) ensuring the model fitting worked correctly
+        2)evaluating the adequacy of a model for some purpose.
+        
+        Bayesian models are generative <- once you condition a model on data, you can 
+        simulate to examine the model's empirical expectations
+        
+        You can't really check if your software worked correctly, but you can check how 
+        well your model reproduces the data used to educate it (the exact much is neither 
+        expected nor desired, but should be some correspondance)
    
-   
+      Model accuracy check.
+        The goal is to assess exactly how the model fails to describe the data, as a path 
+        towards model comprehension, revision, and improvement
+        
+        We want to learn to combine sampling of simulated observation with sampling from 
+        the posterior distribution <- we expect to do better using the entire distribution
+         <- cause there is a lot of information about uncertainty, we don't want to lose it
+         <- to avoid overconfidence
+          
+          so we try to propagate the parameter uncertainty embedded in the posterior   
+          distribution, as we evaluate the implied predictions
+          all that is required is averaging over the posterior density for p, while 
+          computing the predictions
+          -> for each value of p, there is an implied distribution of outcomes
+          -> if you compute the sampling distribution at each p value, you average all of 
+          these prediction distributions together using the posterior probabilities of each p
+          
+          -> you get a posterior predictive distribution, that incorporates all of 
+          uncertainty from the posterior distribution for the parameter p
+                -> results in distribution of predictions being more honest, wider
+                
+            Calculation:
+```{r}
+#let's try p=0.6 and generate 10,000 simulated predictions for 9 tosses
+w<-rbinom(1e4,size = 9, prob = 0.6) #predictions are stored as counts of water (so min is 0 and max is 9)
+
+simplehist(w,xlab = "water count")
+
+#to be sure that the samples are right.........
+#define grid
+p_grid<- seq(from=0, to=1, length.out=1000)
+
+#define prior, flat prior in this case
+prior<- rep(1,1000)
+
+#compute likelihood at each value in grid
+likelihood<- dbinom(6, size = 9, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+#draw 10 000 samples from the posterior,(10 000= 1e4) read 1 times 10 to the power of 4 
+samples<- sample(p_grid, prob = posterior, size = 1e4, replace = TRUE) 
+    #sample function randomly pulls values from the vector p_grid
+    #the probability of each value is given by posterior 
+
+#to propagate uncertainty: replace the parameter value with samples from the posterior
+w<-rbinom(1e4,size = 9, prob = samples) #predictions are stored as counts of water (so min is 0 and max is 9)
+
+simplehist(w,xlab = "water count")
+```
+            
+                
+          
+          
+          
 Practice
     
