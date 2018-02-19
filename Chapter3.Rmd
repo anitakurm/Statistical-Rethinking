@@ -165,14 +165,179 @@ sum(posterior[p_grid<0.5])
 
 ```
     About 17% of the posterior probability is below 0.5, how do you do that with samples?
+    generalized method, so you can use it anywhere
+    sum the samples, that meet the requirement and divide the resulting count by the total 
+    number of samples
     
-
+```{r}
+sum(samples<0.5)/1e6
+```
+      nearly the sane answer
+    
+      Using the same approach: how much posterior probabilty lies between 0.5 and 0.75
+```{r}
+sum(samples>0.5 & samples<0.75)/1e6
+```
+      Around 60% of the posterior probability lies between 0.5 and 0.75
    
    2.2. Intervals of defined mass
+      e.g.common interval to be reported is a confidence interval
+      interval of posterior probability - credible interval
+      these posterior intervals report two parameter values that contain between them a 
+      probability mass (a specified amount of posterior probability)
+      it's mostly easier to use samples, than grid approximation
+      
+      e.g. percentile intervals (PI)
+      find the boundaries of the lower 80% of posterior prob. starts at p=0, so we are
+      looking for 80th percentile
+```{r}
+quantile(samples, 0.8)
+```
+        or middle 80% (i.e. it's between 10th and 90th percentile)
+```{r}
+quantile(samples, c(0.1, 0.9))
+```
+      This approach works well only with symmetrical distriburions
+      
+      For assymetrical posteriors:
+```{r}
+#first, create assymetrical posterior
+#define grid
+p_grid<- seq(from=0, to=1, length.out=1000)
+
+#define prior, flat prior in this case
+prior<- rep(1,1000)
+
+#compute likelihood at each value in grid, 3 waters in 3 tosses -> max value at p=1
+likelihood<- dbinom(3, size = 3, prob = p_grid)
+
+#compute product of likelihood and prior
+unstd.posterior<- likelihood*prior
+
+#standardize the posterior, so it sums to 1
+posterior<- unstd.posterior/sum(unstd.posterior)
+
+plot(p_grid, posterior, type="b", xlab="probability of water", ylab="posterior probability")
+
+#draw 10 000 samples from the posterior, (10 000= 1e4) 
+samples<- sample(p_grid, prob = posterior, size = 1e4, replace = TRUE) 
+    #sample function randomly pulls values from the vector p_grid
+    #the probability of each value is given by posterior 
+
+```
+```{r}
+#50% percentile confidence interval
+PI(samples, prob = 0.5)
+```
+      this interval assigns 25% pf the probability below and above the interval, i.e. 50% 
+      probability <- it excludes the most probable parameter values, not good.
+      
+      Solution: Highest Posterior Density Interval (HPDI) - narrowest interval containing 
+      the specified probability mass - the densest of these intervals
+```{r}
+#find narrowest region with 50% of the posterior probability
+HPDI(samples, prob = 0.5) 
+```
+      HDPI has advantages over PI, especially if the posterior is skewed
+      but also has disadvantages - is more computationally intensve,is sensitive to how many samples were drawn ("suffers from simulation variance")
+      
+      If the choice of interval type makes a big difference, don't use intervals to summarize the posterior.
+      The entire posterior distribution is the Bayesian estimate! - it summarizes the relative plausibilities of each possible parameter value. If choice of interval makes big difference, just plot  the entire posterior distribution
+      
+      
+      
    2.3. Point estimates
+   - you don't have to... it's hardly ever necessary
+   but... you can report 
+      a) a maximum a posteriori (MAP) estimate (the mode)
+```{r}
+#from the grid
+p_grid[which.max(posterior)] #it's 1
+
+#from the samples
+chainmode(samples, adj=0.01) #0.997
+```
+      b)mean 
+      c)median
+```{r}
+mean(samples) #0.801
+median(samples) #0.843
+```
+    Or you can use the loss fucntion - tells you the cost associated with using any particular point estimate
+      different loss functions imply different point estimates
+      
+    we are trying to calculate expected loss for any given descision 
+```{r}
+#we decide/guess that p=0.5 (the proportion of water on the Earth)
+#we compute the weighted average loss, where each loss is weighted by its corresponding posterior probability
+sum(posterior*abs(0.5-p_grid)) #the loss is 0.31287
+
+#repeat calculation for every possible  and get a list of loss values
+loss<- sapply(p_grid, function(d) sum(posterior*abs(d-p_grid)))
+
+#find the parameter value that minimizes the loss
+p_grid[which.min(loss)]
+```
+    THIS IS BASICALLY THE MEDIAN - value that splits the posterior density, so half of the mass is above at and anoither half is below it
+```{r}
+median(samples)
+```
+    This was the absolute loss function (d-p) i.e. decision-correct value -> leads to the median as the point estimate 
+    There is also the quadratic loss function (d-p)^2 -> leads to the posterior mean as the point estimate
+```{r}
+mean(samples)
+```
 
 3. Sampling to simulate prediction
+  Samples ease simulation of the model's implied observations, that are useful for:
+      a)Model checking 
+      b)Software validation
+      c)Research design
+      d)Forecasting
+      
    3.1. Dummy data
+      Bayesian models are always generative, capable of simulating prediction
+      Simulated data -> dummy data
+      With the globe tossing model, the dummy data arises from a binomial likelihood:
+      
+                  n!     
+  Pr(w|n,p) = ----------p^w(1-p)^(n-w) 
+              w!(n-w)!                
+```{r}
+#suppose n=2 tosses of the globe -> there might be 0 w, 1 w or 2 w
+#you can compute the likelihood of each possibility, for any p
+#let's use p=0.7
+dbinom(0:2,size =2,prob = 0.7 )
+```
+     9% chance to see 0 observation of water, 42% chnace to see 1 w, 49% chance to see 2 w
+     
+     you'll get a different distribution of implied observations for different p values
+```{r}
+dbinom(0:2,size =2,prob = 0.2 )
+dbinom(0:2,size =2,prob = 0.5 )
+dbinom(0:2,size =2,prob = 0.99 )
+```
+     
+     now we'll try to simulate observations, using these likelihoods, by sampling!
+```{r}
+#sampling a single dummy data observation of w
+rbinom(1,size = 2, prob = 0.7) #r stands for random
+
+#generating 10 simulations 
+rbinom(10,size = 2, prob = 0.7)
+
+#generating 100,000 dummy observations, to verify that each value appears un proportion to it's likelihood
+dummy_w<- rbinom(1e5,size = 2, prob = 0.7)
+table(dummy_w)/1e5
+```
+     
+     the same procedure with 9 tosses
+```{r}
+dummy_w<-rbinom(1e5,size = 9, prob = 0.7)
+simplehist(dummy_w,xlab = "dummy water count")
+```
+     the most observations 
+                                                          
    3.2. Model checking
    
    
