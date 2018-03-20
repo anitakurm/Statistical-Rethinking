@@ -1,0 +1,163 @@
+---
+title: "Chapter 4"
+author: "Anita Kurm"
+date: "March 19, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#wd
+setwd("C:/Users/JARVIS/Desktop/Uni/Semester 4/Computational modelling/Statistical-Rethinking")
+
+#libraries
+pacman::p_load(readr,groupdata2,ggplot2,tidyverse,data.table, rethinking)
+```
+
+Linear models
+Linear regression as a Bayesian procedure: under a probability interpretation, linear regrssion uses a Gaussian distribution to describe model's uncertainty about some measurement of interest
+
+  4.1. Why normal distributions are normal
+    4.1.1. by addition
+    football pitch experiment:
+```{r}
+#generate 16 random numbers per person representing individual steps of a random distance between 0 and 1 yard in either of the disrections <- runif(16,-1,1)
+#add steps together to get the position after all 16 steps <- sum()
+#replicate the procedure for 1000 people <- replicate(1000,...)
+pos<- replicate(1000, sum(runif(16,-1,1)))
+
+#plot the distribution
+hist(pos)
+plot(density(pos))
+```
+      we can see how normality emerges out of randomness
+      -> random values "cancel each other out", i.e. a large positive fluctuation will cancel a large negative one -> convergence (more values in a sum, more values cancel each other out, so the sum tends to end up at zero relative to the mean.)
+
+    4.1.2 by multiplication
+    another way to get the normal distribution..
+    loci and their growth effects multiply:
+```{r}
+#sample a random growth rate: sample 12 random numbers between 1.0 (no growth) and 1.1 (10% increase), representing a proportional increase in growth
+prod(1+runif(12,0,0.1)) #the product of these 12 numbers is computed 
+
+#generate 10000 random products
+growth<- replicate(10000, prod(1+runif(12,0,0.1)))
+
+#plot
+dens(growth, norm.comp = T) #overlays normal distribution
+```
+      small effects that multiply together are approx additive  -> tend to stabilize on Gaussian distribution
+```{r}
+big<- replicate(10000, prod(1+runif(12,0,1)))
+avg<- replicate(10000, prod(1+runif(12,0,0.4)))
+small<- replicate(10000, prod(1+runif(12,0,0.01)))
+
+#plot
+dens(big, norm.comp = T)
+mtext("BIG EFFECTS")
+dens(avg, norm.comp = T)
+mtext("BIG EFFECTS")
+dens(small, norm.comp = T)
+mtext("SMALL EFFECTS")
+```
+      
+    With small effects the range of casual forces that tend towards Gaussian distributions extends beyond purely additice interactions
+ 
+    4.1.3 By log-multiplication
+    Large deviates (big effects) multiplied together do not produce Gaussian distributions, but they tend to produce Gaussian distributions on the log scale (so do the small deviates)
+```{r}
+log.big<- replicate(10000, log(prod(1+runif(12,0,1))))
+dens(log.big, norm.comp = T)
+mtext("BIG EFFECTS ON THE LOG SCALE")
+
+log.small<- replicate(10000, log(prod(1+runif(12,0,0.01))))
+dens(log.small, norm.comp = T)
+mtext("SMALL EFFECTS ON THE LOG SCALE")
+```
+    Adding logs is equivalent to multiplying the original numbers ->
+        log scales are used to measure sound and earthquakes and information (see chapter 6)
+
+    4.1.4 Using Gaussian distributions
+    - a member of exponential familyof fundamental natural distributions
+    as a skeleton for hypotheses, building up models of measurements as aggregations of normal distributions. Justified by:
+    
+        4.1.4.1. Ontological justification
+        it's a widespread (but not universal) pattern: measurement errors, variations in growth, velocities of molecules tend towards normal distribution <- cause these processes add together fluctuations(variations) -> results in a distribution of sums that have lost all info aside from mean and spread
+        -> gaussian based models cannot reliably identify micro-process, still useful tho
+        
+         4.1.4.2. Epistemological justification
+         it represents a particular state of ignorance: gaussian says only mean and variance of the distribution of measures
+         a measure has finite variance <- it's least surprising and least informative assumption <- gaussian does not add any new assumptions <-gaussian is the most consistent with the model's assumptions
+         this justification is premised on Inofrmation theory and maximum entropy
+         
+  4.2 A language for describing models
+    1) Recognize outcome variable(s) - a set of measurements that we hope to predict or understand
+    2) For each outcome variable, we define a likelihood distribution that defines the plausibility of individual observations <- Gaussian distribution in linear regression
+    3) Recognize predictor variables - a set of other measurements we hope to use to predict or understand the outcome
+    4) Relate the exact shape (location, variance etc) of the likelihood distribution to the predictor variables <- we are forced to name and define all of the parameters of the model 
+    5) Choose priors for all of the parameters in the mode -> priors define the inital information state of the model, before seeing the data
+    
+    Models as mappings of one set of variables through a probability distribution onto another set of variables 
+      4.2.1 Re-describing the globe tossing model
+       w ~ Binomial(n,p)   <- the count w is distributed binomially with sample size n and probability p -> binom.distr. assumptions: each sample is independent of the others, sample points are independent of one another
+       p ~ Uniform (0,1)   <- the prior p is assumed to be uniform between zero and one
+       
+       ~ means stochatic relationship (just a mapping of a variable or parameter onto a distribution), where no single instance of the variable on the left is known with certainty -> the mapping is probabilistic (some values are more plausible than others)
+       
+  4.3. A Gaussian model of height
+    regression as soon as we have a predictor c´variable in it
+    We want our Bayesian machine to consider every possible distribution (each defined by a combination of mu and sigma) and rank them by posterior plausibility - a measure of the logical compatibility of each possible distribution with the data and model
+    -> we'll get an estimate of plausibility of every combination in light of data - a posterior distribution of Gaussian distributions ranked by plausibility
+      4.3.1. The data
+```{r}
+#load the dataframe
+data(Howell1)
+d<- Howell1
+
+#inspect the structure of tha dataframe
+str(d)
+
+#access the vector - column cont. the heights
+d$height
+
+#filter out non adults
+d2<- d[d$age >= 18,]
+
+dens(d2$height)
+```
+      4.3.2. The model
+      the general model: hi ~ Normal(mu,sigma)    
+      
+      <- h refers to the list of heights, and the subscript i means each individual element of this list (index) <- the model knows that each height measurement is defined by the same normal distribution, with mean mu and std dev sigma
+      the values hi are independent and identically distributed (iid)
+      
+      To complete the model, we need priors:
+      we need a prior Pr(mu,sigma), since both mu and sigma are the parameters to be estimated - this prior is the joint probability for all parameters
+      Pr(mu, sigma)= Pr(mu)Pr(sigma)
+      
+      So our model:
+      hi ~ Normal(mu,sigma)     [likelihood]
+      mu ~ Normal(178,20)       [mu prior]
+      sigma ~ Uniform(0,50)     [sigma prior] flat
+       
+```{r}
+#plot your priors
+
+#prior for the mean - a broad gaussian prior centered on 178 (cause author is that tall, duh) with 95% of probability between 178+-40
+curve(dnorm(x,178,20), from=100, to=250)   #the average height is almost certainly between 140 and 220cm - a bit of info from the prior
+
+#prior for the std dev - a flat prior, a uniform one, so std dev has positive probability between 0 and 50cm
+curve(dunif(x,0,50), from=-10, to=60)    #a std dev of 50cm implies that 95% ofindividual heights lie within 100cm of the average height
+
+#sample from the prior
+sample_mu <- rnorm(1e4, 178, 20)
+sample_sigma <-runif(1e4, 0, 50)
+prior_h <- rnorm(1e4, sample_mu, sample_sigma)
+dens(prior_h)
+
+
+```
+
+      We get the distribution of relative plausibilities of different heights before seeing the data
+      
