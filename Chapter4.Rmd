@@ -161,3 +161,134 @@ dens(prior_h)
 
       We get the distribution of relative plausibilities of different heights before seeing the data
       
+      4.3.3. Grid approximation of the posterior distribution
+      let's see how it looks on a model with more than one parameter 
+      super computationally expensive, so will use approximations later
+```{r}
+#a list of possible mu values
+mu.list<- seq(from=140, to=160, length.out = 200)
+
+#a list of possible sigma values
+sigma.list<- seq(from=4, to=9,length.out = 200)
+
+post<-expand.grid(mu=mu.list, sigma=sigma.list)
+post$LL <- sapply(1:nrow(post), function(i) sum( dnorm(
+  d2$height,
+  mean = post$mu[i],
+  sd= post$sigma[i],
+  log = TRUE
+)))
+
+post$prod <- post$LL+dnorm(post$mu, 178, 20, TRUE)+
+  dunif(post$sigma, 0, 50, TRUE)
+post$prob <- exp(post$prod - max(post$prod))  #posterior distribution
+
+#plot
+#contour plot
+contour_xyz(post$mu, post$sigma, post$prob)
+
+#a sample heat map
+image_xyz(post$mu, post$sigma, post$prob)
+```
+      4.3.4. Sampling from the posterior
+      to study the posterior in more detail..
+      Chapter 3: we scoop a bunch of parameter values from the posterior and assume, that they were well mixed -> the samples will have the same proportions as the exact posterior density
+      i.e. the individual values of parameters will appear in samples in proportion to the posterior plausibility of each value (we'll have more parameter values from around the  peak, than from the tails)
+      Samples are just vectors of numbers, so you can compute any statistic from them that you could from ordinary data
+      
+      New trick! More than one parameter and we need to sample combinations of paramaters -> first randomly sample row numbers in post in proportion to the values in post$prob  (posterior distribution) -> then pull the parameter values on those randomly sampled rows
+      code:
+```{r}
+#randomly sample row numbers in the dataframe in proportion to the values in the posterior distribution
+sample.rows <- sample(1:nrow(post), size = 1e4, replace = TRUE,
+                      prob = post$prob)
+
+#pull the parameter values on those randomly sampled rows
+sample.mu <-post$mu[sample.rows]
+sample.sigma <-post$sigma[sample.rows]
+
+#plot samples
+#cex - character expansion/the size of the points
+#pch - plot character
+#0.1 - transparency value
+plot(sample.mu, sample.sigma, cex= 0.6, pch=16, col=col.alpha(rangi2,0.1))
+```
+      
+    By summarizing samples you can describe the distribution of confidence in each combination of mu and sigma  
+    
+    For instance:
+    Characterize the shapes of the marginal (averaging over the other parameters) posterior densities of mu and sigma
+```{r}
+dens(sample.mu)
+mtext("Marginal posterior density of mu, averaging over sigma")
+dens(sample.sigma)
+mtext("Marginal posterior density of sigma, averaging over mu")
+
+```
+
+    Chapter 3: Highest Posterior Density Interval (HPDI) - narrowest interval containing the specified probability mass - the densest of these intervals
+    
+```{r}
+#summarize the widths of these densities with highest posterior density intervals
+#find narrowest region with highest amount of the posterior probability
+HPDI(sample.mu)
+HPDI(sample.sigma)
+```
+    
+    you can do all kinds of stuff with samples (see chapter 3)
+    
+    The same code as above, but with less data -> problems with posterior sigma distribution -> non-gaussian if sample is small (has a long right-hand tail, since it's more uncertain about big std deviations than about std dev close to zero)
+```{r}
+#just less data
+d3 <- sample(d2$height, size = 20)
+
+#a list of possible mu values
+mu.list<- seq(from=150, to=170, length.out = 200)
+
+#a list of possible sigma values
+sigma.list<- seq(from=4, to=20,length.out = 200)
+
+post2<-expand.grid(mu=mu.list, sigma=sigma.list)
+post2$LL <- sapply(1:nrow(post2), function(i) sum( dnorm(
+  d3,
+  mean = post2$mu[i],
+  sd= post2$sigma[i],
+  log = TRUE
+)))
+
+post2$prod <- post2$LL+dnorm(post2$mu, 178, 20, TRUE)+
+  dunif(post2$sigma, 0, 50, TRUE)
+post2$prob <- exp(post2$prod - max(post2$prod))  #posterior distribution
+
+#randomly sample row numbers in the dataframe in proportion to the values in the posterior distribution
+sample2.rows <- sample(1:nrow(post2), size = 1e4, replace = TRUE,
+                      prob = post2$prob)
+
+#pull the parameter values on those randomly sampled rows
+sample2.mu <-post2$mu[sample2.rows]
+sample2.sigma <-post2$sigma[sample2.rows]
+
+#plot samples
+#cex - character expansion/the size of the points
+#pch - plot character
+#0.1 - transparency value
+plot(sample2.mu, sample2.sigma, cex= 0.5, col=col.alpha(rangi2,0.1), xlab="mu", ylab="sigma", pch=16)
+
+#marginal posterior density for sigma, averaging over mu
+dens(sample2.sigma, norm.comp = TRUE)
+mtext("Marginal posterior density of sigma, averaging over mu")
+
+
+```
+    So, be careful with approximations, if sigma density posterior is important (the distribution is not gaussian, long right-side tail)
+    
+     4.3.5. Fitting the model with map
+      QUADRATIC APPROXIMATION FTW!
+      - quickly make inferences about the shape of the posterior
+      Posterior's peak lies at the maximum a posteriori estimate (MAP)
+      -> use quadratic approx of the posterior distribution at this peak -> get an image of the posterior's shape 
+      map command is used to find the values of mu and sigma that maximize the posterior probability
+```{r}
+
+```
+
