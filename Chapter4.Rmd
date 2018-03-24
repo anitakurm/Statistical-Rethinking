@@ -288,7 +288,125 @@ mtext("Marginal posterior density of sigma, averaging over mu")
       Posterior's peak lies at the maximum a posteriori estimate (MAP)
       -> use quadratic approx of the posterior distribution at this peak -> get an image of the posterior's shape 
       map command is used to find the values of mu and sigma that maximize the posterior probability
+      
+      
+      Define the model:
+      hi <- Normal(mu,sigma)
+      mu <- Normal(178,20)
+      sigma <- Uniform(0,50)
+      
 ```{r}
+#use Howell data again, d2 - only adults
+#place R code equivalents of model formulas into an alist
+#alist instead of list, so R won't start executing and calculating the objects inside it
+flist<- alist(
+  height~dnorm(mu,sigma),
+  mu~dnorm(178,20),
+  sigma~dunif(0,50)
+)
+
+#fit the model to the data d2
+m4.1 <- map(flist, data=d2)
+
+#look at the fit maximum a posteriori 
+precis(m4.1)
+
+#if you want other than default 89% interval..
+#precis(m4.1, prob = 0.95)
 
 ```
+    we see Gaussian approxiamtions for each parameter's marginal distribution
+      i.e. the plausibility of each value of mu, after averaging over the plausibilities of each value of sigma, is given by a Gaussian distribution with mean 154.61 and standard deviation 0.4
+        89% - default percentile interval containing high-probability range of parameter values. "BECAUSE IT IS PRIME"
+        89% boundaries are very similar to HPDIs from grid approx -> the posterior is approx Gaussian 
 
+      Try stronger, more informative priors!
+      std dev of mu -> 0.1 (instead of 0, so now it's a very narrow prior)
+```{r}
+#build it all at once
+m4.2<- map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu~dnorm(178,0.1),
+    sigma~dunif(0,50)
+  ),
+  data = d2)
+
+precis(m4.2)
+```
+      Mu: the prior was very concetrated around 178 -> so mu has hardly moved off the prior
+      Sigma: the estimate has changed, even though we haven't change its prior
+        <- the model was more certain about mu estimates, as the prior insisted, so the model had to estimate sigma conditional on that fact
+        
+      4.3.6. Sampling from a map fit
+      we know how to get a MAP quadratic approximation of the posterior, but how do we get samples from it?
+      
+      A quadratic approximation to a posterior distribution with more than one parameter dimenasion is just a multi-dimensional Gaussian distribution
+          mu and sigma each contribute one dimension
+          
+      -> R calculates std deviations for all parameters + the covariances among all pairs of parameters
+      
+      We can describe:
+      One-dimensional Gaussian distribution: mean and std dev (or its square, aka variance)
+      Multi-dimensional Gaussian distribution: a list of means and a matrix of variances and covariances  
+```{r}
+#see the matrix of variances and covariances
+vcov(m4.1)
+```
+      
+      VARIANCE-COVARIANCE matrix
+      - is the multi-dimensional glue of a qudratic approximation
+      - tells how each parameter relates to every other parameter in the posterior dstrb
+      - can be factored into two vectors:
+          1) a vector of variances for the parameters
+          2) a correlation matrix: how chnages in any parameter lead to correlated chenges in others
+          
+```{r}
+#list of variances (squares of std devs from precis output)
+diag(vcov(m4.1))
+
+#correlátion matrix
+cov2cor(vcov(m4.1))
+```
+        
+      1s indicate parameter's correlation with itself (they should be 1s!!!)
+      other entries  are closer to zero ->  learning mu tells us nothing about sigma and likewise learning sigma tells us nothing about mu
+      
+      We want to get samples from multi-dimensional posterior:
+      we sample vectors of values (instead of single values from a simple Gaussian dstrb)
+```{r}
+#sample vectors from multidimensional distribution
+post<- extract.samples(m4.1, n=1e4)
+head(post)
+```
+      each value is a sample from the posterior , so the mean and std dev of each column will be very close to the MAP values:
+```{r}
+precis(post)
+
+#vs
+precis(m4.1) #basically the same
+
+#plot post
+plot(post)
+```
+      
+      The samples also preserve the covariance between mu and sigma (doesn't matter here, cause mu and sigma don't covary at all in this model) 
+      But!! Once you add a predictor variable to your model, covariance matters a lot!!
+      
+  
+  4.4. Adding a predictor
+  
+  How do height and weight covary?
+```{r}
+plot(d2$height~d2$weight)
+```
+  
+      now we want to take Gaussian model and incorporate predictor variables
+      
+        4.4.1. The linear model strategy
+        Make mu (the parameter for the mean of a Gaussian distribution) into a linear function of the predictor variable and other parameters we invent
+        i.e. make a linear model
+          -> assume that the predictor variable has a perfectly constand and additive relationship to the mean of the outcome -> the model computes the posterior distribution of this constant relationship
+          
+          every possible combination of the parameter values is considered -> with a linear model, some of the parameters now stand for the strength of the association between the outcome (its mean) and the predictor (its value) -> for each combination, the psoterior probability 
+        
