@@ -408,5 +408,244 @@ plot(d2$height~d2$weight)
         i.e. make a linear model
           -> assume that the predictor variable has a perfectly constand and additive relationship to the mean of the outcome -> the model computes the posterior distribution of this constant relationship
           
-          every possible combination of the parameter values is considered -> with a linear model, some of the parameters now stand for the strength of the association between the outcome (its mean) and the predictor (its value) -> for each combination, the psoterior probability 
+          every possible combination of the parameter values is considered -> with a linear model, some of the parameters now stand for the strength of the association between the outcome (its mean) and the predictor (its value) -> for each combination, the posterior probability is computed (i.e. a measure of relative plausibility, given the model and data) -> i.e. the posterior distribution ranks the combinations of parameter values by their logical plausibility
+       
+        -> the posterior distribution provides relative plausibilities of the different possible strengths of association, given the assumptions programmed into the model
         
+      The basic Gaussian model:
+      h i ~ Normal(mu,sigma)     [likelihood]
+      mu ~ Normal(178,20)       [mu prior]
+      sigma ~ Uniform(0,50)     [sigma prior] flat
+        
+      
+      now we put "weight" into the height model: as the "x" variable  <- x is gonna stand for d2$weight
+      now both x and h are lists of measures of the same length
+      we want to know how knowing the values in x can help us describe the values in h
+      
+      to get x (weight) into the model, we define the mean mu as a function of the values in x:
+      hi ~ Normal(mui,sigma)       [likelihood]
+      mui = alpha + beta xi        [linear model]
+      alpha ~ Normal(178,100)      [alpha prior]
+      beta ~ Normal(0,10)          [beta prior]
+      sigma ~ Uniform(0,50)        [sigma prior] flat
+      
+      
+  With explanations:
+    Likelihood:
+      hi ~ Normal(mui,sigma)       [likelihood]  <- 
+                                  - mu with index i, since the mean mu depends upon unique predictor values on each row                                     i -> i.e. the mean depends upon the row
+    
+    Linear model:
+      mui = alpha + beta xi        [linear model] <- 
+                                    - we don't want to estimate the mean mu anymore, since it is constructed from                                             parameters alpha and beta, and the predictor x; 
+                                    - the relationship is not probabilistic, it is determenistic (once we know aplha,                                         beta, x i, we know mu i) -> "=" instead of "~" 
+                                    - x i refers to the same individual as the value h i, on the same row
+                                    - we invented alpha and beta parameters for manipulating mu, allowing it to vary                                          systematically across individuals in the data
+                                    
+                                    Bu defining this model you ask:
+                                    - What is the expected height, when xi = 0? Answer: the paramater alpha (intercept) 
+                                    - What is the change in expected height, when xi changes by 1 unit? Answer: the beta       
+     Priors:
+      alpha ~ Normal(178,100)      [alpha prior] <-
+                                    - what we were used to as mu prior
+                                    - windened now since it's common for the intercept to swing a long way from the mu
+                                    - the flat prior with a huge std dev will allow the intrcpt to move wherever needed
+      beta ~ Normal(0,10)          [beta prior] <-
+                                    - puts as much probability below zero, as above
+                                    - when beta=0 weight has no relationship to height
+                                    - will pull probability mass towards zero, leading to more conservative estimates
+                                    - 10 is still large std dev, so make it smaller to shrink the dstrb towards zero
+                                    - conservative priors are useful for improving inference
+      sigma ~ Uniform(0,50)        [sigma prior] flat
+      
+      
+    
+        4.4.2. Fitting the model 
+        incorporate the new model for the mean into the model specification inside map
+        add new parameters to the start list
+        
+        The model (again...):
+        hi ~ Normal(mui,sigma)       [likelihood]
+        mui = alpha + beta xi        [linear model] we'll use "<-" as "=", as used by several Bayesian modelfit engines 
+        alpha ~ Normal(156,100)      [alpha prior]
+        beta ~ Normal(0,10)          [beta prior]
+        sigma ~ Uniform(0,50)        [sigma prior] flat
+```{r}
+#fit the model
+m4.3<- map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b*weight, #mu is not a parameter anymore, it is defined by the linear model instead
+    a ~ dnorm(156,100), #starts at the overall mean
+    b ~ dnorm(0,10),  #conservatively start the slope at zero, i.e. no relatioship btwn predictor and outcome
+    sigma~dunif(0,50)
+  ),
+  data = d2)
+
+```
+      
+      4.4.3. Interpreting the model fit
+      they're hard to understand..
+      so we do 1) reading tables and 2) plotting
+      plot plot plot the posterior distributions and posterior predictions!!!
+      
+      Plotting the implications of your estimates will allow you to inquire:
+      1) whether or not the model fitting procedure worked correctly
+      2) the absolute magnitude, rather than merely relative magnitude, of a relationship btwn outcome and predictor
+      3) the uncertainty surrounding an average relationship
+      4) the uncertainty surrounding the implied predictions of the model, as these are distinct from mere parameter uncertainty
+      
+      figures in result sections ftw!
+      
+      but first.. tables
+      
+        4.4.3.1. Tables of estimates
+        because of covariation among parameters, models in general cannot be understood by tables of estimates
+```{r}
+#inspect the estimates
+precis(m4.3)
+```
+        1) quadratic approx of alpha:
+              alpha is an intercept so 113.89 means that a person of weight 0 should be 114cm tall
+              nonsense, value of intercept is often unintepretable without also studying beta values
+        2) qudratic approx of beta:
+              beta is a slope, so 0.90 means that a person 1 kg heavier is expected to be 0.90cm taller;
+              89% of the posterior lies btwn 0.84 and 0.97 -> beta values close to 0 or greatly above 1 are highly incompatible with these data and these model; 
+              this estimate indicates strong evidence of a positive relationship btwn height and weight
+        3) quadratic approx of sigma
+              informs us of the width of the distribution of heights around the mean
+              so this estimate tells us that 95% of plausible heights lie within 10 cm (2 sigmas) of the mean height
+              there is uncertainty about this, as indicated by 89% percentile interval
+              
+          We also need variance-covariance matrix to describe the quadratic posterior
+          variance is described in the precis output, so we need to see correlations among parameters:
+```{r}
+#same as cov2cor(vcov(m4.3))
+precis(m4.3, corr = TRUE)
+```
+          Now we see correlations among the parameters 
+        Alpha and beta are almost perfectly negatively correlated -> means that two parameters carry the same information (i.e. as you change the slope, the best intercept changes to match it)
+        it's harmless now, but we'll try to engineer models to avoid it, when possible
+        
+        Tricks to do that:
+          CENTERING - subtracting the mean of a variable from each value
+```{r}
+#create a centered version of the weight variable
+d2$weight.c <- d2$weight - mean(d2$weight)
+
+#the average value of centered weight variable is nearly zero
+mean(d2$weight.c)
+
+#refit the model
+m4.4<- map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b*weight.c, #mu is not a parameter anymore, it is defined by the linear model instead
+    a ~ dnorm(156,100), #starts at the overall mean
+    b ~ dnorm(0,10),  #conservatively start the slope at zero, i.e. no relatioship btwn predictor and outcome
+    sigma~dunif(0,50)
+  ),
+  data = d2)
+
+#new estimates
+precis(m4.4, corr = TRUE)
+```
+          Beta and sigma estimates haven't changed (or changed within rounding error)
+          The estimate for alpha: still expected value of the outcome variable, when the predictor variable is equal 0
+            Now the mean value of the predictor is also zero
+         centerring the predictor ->  the expected value of the outcome, when the predictor is at its average value
+         i.e. the expected height is estimated to be 154.60, when the weight is at its average value 
+         (it's easier to interpret the intercept)
+         
+         4.4.3.2. Plotting posterior inference against the data
+         helps in interpretting the posterior + provides an informal check on model assumptions
+         if the model predictions don't fit the data -> model probably did not fit correctly or badly specified
+```{r}
+#superimpose the MAP values for mean height over the actual data
+plot(height ~ weight, data=d2)
+abline(a=coef(m4.3)["a"], b=coef(m4.3)["b"]) #the function coef returns a vector of MAP values
+
+```
+         The line is defined by slope beta and intercept alpha - just the posterior mean, the most plausible line out of an insane amount of lines considered, we get a sense of the magnitude of the estimated influence of a predictor on an outcome (weight on height)
+         
+         4.4.3.3. Adding uncertainty around the mean
+         we need to communicate uncertainty!
+         to get the uncertainty on the plot, we could sample a bunch of lines from the posterior distribution and display those lines on the plot
+```{r}
+#extract some samples from the model
+post <- extract.samples(m4.3)
+
+#inspect the first 5 rows
+post[1:5,]
+```
+         the paired values of a and b define a line
+         the average of very many of these lines is the MAP line from before, but scatter around it is meaningful, since it alters our confidence in the relationship between the predictor and the outcome
+         
+         Model re-estimation with different amount of data:
+```{r}
+#extract the first 10 cases in d2 and reestimate the model
+N <- 10
+dN <- d2[1:N,]
+mN <-  map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b*weight , 
+    a ~ dnorm(178,100),
+    b ~ dnorm(0,10),  #conservatively start the slope at zero, i.e. no relatioship btwn predictor and outcome
+    sigma~dunif(0,50)
+  ),
+  data = dN)
+
+#plot 20 of these lines, to see what teh uncertainty looks like
+
+#extract 20 samples from the posterior
+post <- extract.samples(mN, n=20)
+
+#display raw data and sample size
+plot(dN$weight, dN$height,
+     xlim = range(d2$weight), ylim = range(d2$height),
+     col=rangi2, xlab="weight", ylab="height")
+mtext(concat("N = ", N))
+
+#plot the lines: loop over all 20 lines using abline to display each 
+for (i in 1:20)
+  abline(a=post$a[i], b=post$b[i], col=col.alpha("black",0.3))
+
+```
+         change amount of data now:
+```{r}
+#extract the samples and reestimate the model
+N <- 300
+dN <- d2[1:N,]
+mN <-  map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b*weight , 
+    a ~ dnorm(178,100),
+    b ~ dnorm(0,10),  #conservatively start the slope at zero, i.e. no relatioship btwn predictor and outcome
+    sigma~dunif(0,50)
+  ),
+  data = dN)
+
+#plot 20 of these lines, to see what teh uncertainty looks like
+
+#extract 20 samples from the posterior
+post <- extract.samples(mN, n=20)
+
+#display raw data and sample size
+plot(dN$weight, dN$height,
+     xlim = range(d2$weight), ylim = range(d2$height),
+     col=rangi2, xlab="weight", ylab="height")
+mtext(concat("N = ", N))
+
+#plot the lines: loop over all 20 lines using abline to display each 
+for (i in 1:20)
+  abline(a=post$a[i], b=post$b[i], col=col.alpha("black",0.3))
+```
+         the cloud of regression grew more compact as the sample size increases <- a result of the model growing more confident about the location of the mean
+         
+         4.4.3.4. Plotting regression intervals and contours
+         
+            
+            
+          
