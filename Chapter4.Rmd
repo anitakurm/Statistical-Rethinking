@@ -645,7 +645,356 @@ for (i in 1:20)
          the cloud of regression grew more compact as the sample size increases <- a result of the model growing more confident about the location of the mean
          
          4.4.3.4. Plotting regression intervals and contours
+         The cloud of regression lines communicates uncertainty, but it's more common to plot an interval or contour around the MAP line
          
-            
-            
+         The interval around regression line: incorporates uncertainty in both the slope beta and intercept alpha at the same time
+```{r}
+#focus on an individual who weights 50kg (in form of the equation  for mu, xi = 50)
+mu_at_50 <- post$a + post$b*50
+
+#plot density
+dens(mu_at_50, col=rangi2, lwd=2, xlab="mu|weight=50")
+```
+        joint alpha and beta went into computing -> the variation across those means incorporates uncertainty in and correlation between both parameters 
+        components of mu have distribution -> so does mu (adding Gaussian distribtuions always produces a Gaussian dstr)
+        the posterior for mu is a distribution -> you can find intervals for it
+```{r}
+#find the 89% highest posterior density interval for mu at 50kg
+HPDI(mu_at_50, prob = 0.89)
+```
+        the central 89% of the ways for the model to produce the data (,) place the average height between 158.6cm and 159.6cm, assuming the weight is 50 kg
+        
+        we want to do the same calculation for every possible x (weight) value on the horizontal axis -> to draw 89% HDPIs around the MAP slope
+          <- this is done by link fucntion: take the map model fit, sampple from the posterior dstrb, then compute mu for each case in the data and sample from the posterior dstrb
+```{r}
+#trying the link fucntion, the default is 1000 rows (samples from the posterior)
+mu <- link(m4.3)
+
+#it's a matrix
+str(mu)
+```
+        the output of the link function is a matrix of values of mu:
+          each row is a sample from the posterior dstrb
+          each column is a case (row) in the actual data
           
+        it's basically  a distribution of mu for each individual in the original data
+        but we want! a distribution of mu for each unique weight value on the horizontal axis
+```{r}
+#define sequence of weights to compute predictions for! 
+#these values will be on the horizontal axis
+weight.seq <- seq(from=25, to = 70, by=1) 
+
+#use link to compute mu
+#for each sample from posterior
+#and for each weight in weight.seq
+mu <- link(m4.3, data = data.frame(weight=weight.seq))
+str(mu)
+
+#visualize it
+#show the first 100 values in the distribution of mu at each weight value  
+#use type="n" to hide raw data
+plot(height ~ weight, d2, type="n")
+
+#loop over samples and plot each mu value
+for (i in 1:100)
+  points(weight.seq, mu[i,], pch=16, col=col.alpha(rangi2, 0.1))
+```
+      we got 46 columns in the matrix, since we fed it 46 different values for weight  
+      Plot shows the first 100 values in the distribution of mu (each of these piles of mu values is a Gaussian distribution) at each weight value
+      we can see that the amount of uncertainty depends upon the value of weight
+```{r}
+#summarize the distribution of mu
+#compute the mean of each column (dimension "2") of the matrix mu
+mu.mean <- apply(mu, 2, mean)
+mu.HPDI <- apply(mu, 2, HPDI, prob=0.89)
+
+str(mu.mean)
+str(mu.HPDI)
+
+```
+      each column is for a different weight value 
+```{r}
+#plot raw data
+#fading out points to make line and interval more visible
+plot(height ~ weight, data=d2, col=col.alpha(rangi2,0.5))
+
+#plot the MAP line, aka the mean mu for each weight
+lines(weight.seq, mu.mean)
+
+#plot a shaded region for 89% HPDI
+shade(mu.HPDI, weight.seq)
+```
+      The !Kung height data, with 89% HPDI of the mean indicated by the shaded region
+      
+      
+      To summarize the recipe for generating predictions and intervals from the posterior of a fit model:
+        1. Use link to generate distributions of posterior values fo mu. The default of the function is to use original data, so feed it a list of new horizontal axis values you want to plot your posterior across
+        2. Use summary functions like mean or HPDI or PI to find averages and lowr and upper bounds of mu for each value of the predictor variable
+        3. Use plotting functions, like lines and shade to draw the lines and intervals
+        or other stuff.. it's up to you, really
+      
+      
+      4.4.3.5. Prediction intervals
+      Now let's generate 89% prediction interval for actual heights, not just the average height mu. 
+      We'll incorporate the std dev sigma and its uncertainty as well
+      Above you used samples from posterior tto visualize the uncertainty of mui, the linear model of the mean
+      Actual predictions of heights depend also upon the stochastic (~) definition in the first line
+      
+      The model (again...):
+now we want this -> hi ~ Normal(mui,sigma)       [likelihood]  <- the model expects observed heights to be distributed                                              around mu, not right on top of it. The spread around it is defined by sigma
+we did this ->      mui = alpha + beta xi        [linear model] 
+                    
+                    alpha ~ Normal(156,100)      [alpha prior]
+                    beta ~ Normal(0,10)          [beta prior]
+                    sigma ~ Uniform(0,50)        [sigma prior] flat <- we need to incorporate this in the predictions
+    
+    This is how it's done
+```{r}
+#load the dataframe
+data(Howell1)
+d<- Howell1
+
+
+#filter out non adults
+d2<- d[d$age >= 18,]
+
+#fit the model
+m4.3<- map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b*weight, #mu is not a parameter anymore, it is defined by the linear model instead
+    a ~ dnorm(156,100), #starts at the overall mean
+    b ~ dnorm(0,10),  #conservatively start the slope at zero, i.e. no relatioship btwn predictor and outcome
+    sigma~dunif(0,50)
+  ),
+  data = d2)
+
+#define sequence of weights to compute predictions for! 
+#these values will be on the horizontal axis
+weight.seq <- seq(from=25, to = 70, by=1) 
+
+#simulate heights, the default number of simulations is 1000, I increased it here to make simulation variance smoother
+sim.height <- sim(m4.3, data=list(weight=weight.seq), n =1e4)
+
+#see that it is a matrix, it's a matrix of simulated heights for each defined weight value
+str(sim.height)
+
+#summarize the simulated heights
+#find  89% posterior prediction interval of observable heights, across the values of weight in weight.seq
+height.PI <- apply(sim.height,2, PI, prob=0.89)
+
+
+#use link to compute mu
+#for each sample from posterior
+#and for each weight in weight.seq
+mu <- link(m4.3, data = data.frame(weight=weight.seq))
+#summarize the distribution of mu
+#compute the mean of each column (dimension "2") of the matrix mu
+mu.mean <- apply(mu, 2, mean)
+mu.HPDI <- apply(mu, 2, HPDI, prob=0.89)
+
+#plot raw data
+plot(height ~ weight, d2, col= col.alpha(rangi2, 0.5))
+
+#draw MAP line
+lines(weight.seq, mu.mean)
+
+#draw HPDI region for line 
+shade(mu.HPDI, weight.seq)
+
+#draw PI region for simulated heights
+shade(height.PI, weight.seq)
+
+```
+      89% prediction interval for height, as a fucntion of weight.
+        The solid line is MAP estimate of the mean height at each weight.
+        The two shaded regions show different 89% plausible regions. 
+            The narrow shaded interval around the line is the distribution of mu (posterior distribution of possible mean values). 
+            The wider shaded region represents the region within which the model expects to find 89% of actual heights in the population, at each weight. 
+      
+      
+      4.5. Polynomial regression
+      how to model the outcome as a curved function of a single predictor
+      
+```{r}
+#let's see all the data, not just adults
+str(d)
+
+#plot raw data, height against weight
+plot(height ~ weight, d, col= col.alpha(rangi2, 0.5))
+
+```
+      The relationship is visibly curved -> use polynomial regression
+        polynomial means equations for mui that add additional terms with squares, cubes or even higher powers of the predictor variable
+        just one predictor - the regression is still bivariate, but there is more parameters in the definition of mui
+        
+      polynomials are hard to interpret -> in general a bad thing to do
+      
+      a parabolic model of the mean:
+      mui = alpha + beta1*xi + beta2*(x^2)i
+      
+      alpha - intercept
+      beta1 - slope
+      beta2 - curvature of the relationship
+      
+      fitting the model is easy, interpreting it is hard
+      To fit the model: standardize the predictor variable  (center the variable -> then divide it by its std dev)
+      it leaves the mean at zero but also rescales the range of the data
+```{r}
+#standardize 
+d$weight.s <- ( d$weight - mean(d$weight) )/sd(d$weight)
+
+#plot height on weight.s to verify that no info has been lost 
+plot(height ~ weight.s, d, col= col.alpha(rangi2, 0.5))
+```
+      new variable weight.s has mean zero and std dev 1
+      See! just the horizontal axis range changed, the relationship is still the same
+      
+      To fit the parabolic model, modify the definition of mui:
+      
+      The parabolic model (with very weak priors):
+      hi ~ Normal(mui,sigma)       [likelihood]
+      mui = alpha + beta1*xi + beta2*(x^2)i        [parabolic model] 
+      alpha ~ Normal(178,100)      [alpha prior]
+      beta1 ~ Normal(0,10)          [beta prior]
+      beta2 ~ Normal(0,10)
+      sigma ~ Uniform(0,50) 
+      
+      Fitting:
+```{r}
+#build the square of weight.s as a separate value
+d$weight.s2 <- d$weight.s^2
+
+#fit the model
+m4.5<- map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b1*weight.s + b2*weight.s2, 
+    a ~ dnorm(178,100), 
+    b1 ~ dnorm(0,10),
+    b2 ~ dnorm(0,10),
+    sigma ~ dunif(0,50)
+  ),
+  data = d)
+
+#the summary table
+precis(m4.5) #hard to understand what it's saying...
+
+#plot the model fits
+#calculate the mean relationship and the 89% intervals of the mean and the predictions
+weight.seq <- seq( from=-2.2, to=2, length.out = 30 )
+pred_dat <- list(weight.s=weight.seq, weight.s2 = weight.seq^2)
+
+#use link to compute mu for each sample from posterior and for each weight in weight.seq
+mu <- link(m4.5, data = pred_dat)
+#summarize the distribution of mu
+#compute the mean of each column (dimension "2") of the matrix mu
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+
+#simulate heights, the default number of simulations is 1000, I increased it here to make simulation variance smoother
+sim.height <- sim(m4.5, data=pred_dat, n =1e4)
+#summarize the simulated heights
+#find  89% posterior prediction interval of observable heights, across the values of weight in weight.seq
+height.PI <- apply(sim.height,2, PI, prob=0.89)
+
+####PLOTTING, run all together
+
+#plot raw data
+plot(height ~ weight.s, d, col= col.alpha(rangi2, 0.5))
+#draw MAP line
+lines(weight.seq, mu.mean)
+#draw HPDI region for line 
+shade(mu.PI, weight.seq)
+#draw PI region for simulated heights
+shade(height.PI, weight.seq)
+
+```
+      A second order polynomial regression - the curve does a much better job of finding a central path through the data
+      
+      A higher-order polynomial regression, a cubic regression:
+      hi ~ Normal(mui,sigma)       
+      mui = alpha + beta1*xi + beta2*(x^2)i + beta3*(x^3)i  
+      alpha ~ Normal(178,100)      
+      beta1 ~ Normal(0,10)         
+      beta2 ~ Normal(0,10)
+      beta3 ~ Normal(0,10)
+      sigma ~ Uniform(0,50)
+      
+```{r}
+#use all data - d
+#standardizeweight variable
+d$weight.s <- ( d$weight - mean(d$weight) )/sd(d$weight)
+
+#build the square of weight.s as a separate value
+d$weight.s2 <- d$weight.s^2
+
+#built the cube of weight.s as a separate value
+d$weight.s3 <- d$weight.s^3
+
+#fit the model
+m4.6<- map(
+  alist(
+    height~dnorm(mu,sigma),
+    mu<- a + b1*weight.s + b2*weight.s2 + b3*weight.s3, 
+    a ~ dnorm(178,100), 
+    b1 ~ dnorm(0,10),
+    b2 ~ dnorm(0,10),
+    b3 ~ dnorm(0,10),
+    sigma ~ dunif(0,50)
+  ),
+  data = d)
+
+#the summary table
+precis(m4.6) #hard to understand what it's saying...
+
+#plot the model fits
+#calculate the mean relationship and the 89% intervals of the mean and the predictions
+weight.seq <- seq( from=-2.2, to=2, length.out = 30 )
+pred_dat <- list(weight.s=weight.seq, weight.s2 = weight.seq^2, weight.s3 = weight.seq^3)
+
+#use link to compute mu for each sample from posterior and for each weight in weight.seq
+mu <- link(m4.6, data = pred_dat)
+#summarize the distribution of mu
+#compute the mean of each column (dimension "2") of the matrix mu
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+
+#simulate heights, the default number of simulations is 1000, I increased it here to make simulation variance smoother
+sim.height <- sim(m4.6, data=pred_dat, n =1e4)
+#summarize the simulated heights
+#find  89% posterior prediction interval of observable heights, across the values of weight in weight.seq
+height.PI <- apply(sim.height,2, PI, prob=0.89)
+
+####PLOTTING, run all together
+
+#plot raw data
+plot(height ~ weight.s, d, col= col.alpha(rangi2, 0.5))
+#draw MAP line
+lines(weight.seq, mu.mean)
+#draw HPDI region for line 
+shade(mu.PI, weight.seq)
+#draw PI region for simulated heights
+shade(height.PI, weight.seq)
+```
+      Better fit does not mean a better model
+      The solid line is MAP estimate of the mean height at each weight.
+        The two shaded regions show different 89% plausible regions. 
+            The narrow shaded interval around the line is the distribution of mu (posterior distribution of possible mean values). 
+            The wider shaded region represents the region within which the model expects to find 89% of actual heights in the population, at each weight. 
+      
+      
+      
+      Summary:
+      Simple linear regression model - a framework for estimating the association between a predictor and an outcome
+      The Gaussian distribution comprises (puts together in the same place) the likelihood in such models:
+        it counts up relative numbers of ways  different combinations of means and std devs can produce an observation
+      
+      MAP (maximum a prior) estimation fits these models to data
+      Posterior distributions and posterior predictions vizualization 
+      
+      
+      Reminder. 
+      Posterior is always a probability distribution -> The posterior defines the expected frequency that different parameter values will apear
+      
+      
