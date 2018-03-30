@@ -1,0 +1,232 @@
+---
+title: "Chapter 5"
+author: "Anita Kurm"
+date: "March 29, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#wd
+setwd("C:/Users/JARVIS/Desktop/Uni/Semester 4/Computational modelling/Statistical-Rethinking")
+
+#libraries
+pacman::p_load(readr,groupdata2,ggplot2,tidyverse,data.table, rethinking)
+
+```
+
+Multivariate Linear Models
+  Multivariate regression - using more than one predictor variable to model an outcome
+  Correlation is not rare, but it does not indicate causal relationship -> we need tools for distinguishing mere association from evidence of causation -> we do Multivariate regression, using more than one predictor variable to model an outcome
+  Reasons:
+  1) statistical "control" for confounds (variables that vary (change) with an independent variable,i.e. correlates with it). Simpson's paradox - the entire direction af an association between a predictor and otcome can be reversed byconsidering a confound. 
+  2) Multiple causation. A phenomenon may really arise from multiple causes - measuring each cause is useful (they might hide though, multivariate models can help with that)
+  3) Interactions.  The importance of each varibale may depend upon the other (even if they are uncorrelated). Interactions like combinations of variables (e.g. water+light are benefit for plant only together) occur very often --> Effective inference about one variable depends upon consideration of others
+
+We focus on 1 and : we'll use multivariate regression to deal with simple confounds and to take multiple measurements of influence.
+
+How to include arbitrary umber of main effects in your linear model of the Gaussian mean
+
+
+Also dangers: multicollinearity
+
+Categorical variables -> must be broken down into multiple predictor variables
+
+5.1. Spurious association 
+  The linear regression model for the divorce and the meadian age at marriage:
+    Di ~ Normal(mui,sigma)       [likelihood]  Di - the divorce rate for State i
+    mui = alpha + betaA *Ai      [linear model] Ai - State i's median age at mariage
+    alpha ~ Normal(10,10)      [alpha prior]
+    beta ~ Normal(0,1)          [beta prior]
+    sigma ~ Uniform(0,10)        [sigma prior] 
+```{r}
+#load data
+data(WaffleDivorce)
+d<- WaffleDivorce
+
+#standardize predictor - good habit
+d$MedianAgeMarriage.s <- (d$MedianAgeMarriage-mean(d$MedianAgeMarriage))/sd(d$MedianAgeMarriage)
+
+#fit model
+m5.1<- map(
+  alist(
+    Divorce~dnorm(mu,sigma),
+    mu<- a + bA *MedianAgeMarriage.s, #linear model
+    a ~ dnorm(10,10), #starts at the overall mean
+    bA ~ dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d)
+
+
+
+#compute percentile interval of mean
+#define sequence of weights to compute predictions for! 
+#these values will be on the horizontal axis
+MAM.seq <- seq(from=-3, to = 3.5, length.out = 30) 
+
+#use link to compute mu
+#for each sample from posterior
+#and for each weight in weight.seq
+mu <- link(m5.1, data = data.frame(MedianAgeMarriage.s=MAM.seq))
+mu.PI <- apply(mu, 2, PI)
+mu.mean <- apply(mu, 2, mean)
+
+#visualize it
+#show the first 100 values in the distribution of mu at each weight value  
+#use type="n" to hide raw data
+plot(Divorce ~ MedianAgeMarriage.s, data=d, col= rangi2)
+#plot the MAP line, aka the mean mu for each median age marriage
+lines(MAM.seq, mu.mean)
+#plot a shaded region for 89%  PI
+shade(mu.PI, MAM.seq)
+```
+    
+  ispect precis:
+```{r}
+precis(m5.1, corr = TRUE)
+```
+
+  every std dev of delay in marriage (1.45 years  - sigma) predicts a decrease of about (bA) 1.04 divorce per   thousand adults, with a 89% interval from about -1.37 to -0.72.
+  
+  Try  the reproduce the plot showing that there's more divorces, if there is more marriages
+  - duh...
+```{r}
+#standardize predictor - good habit
+d$Marriage.s <- (d$Marriage-mean(d$Marriage))/sd(d$Marriage)
+
+#fit model
+m5.2<- map(
+  alist(
+    Divorce~dnorm(mu,sigma),
+    mu<- a + bR *Marriage.s, #linear model
+    a ~ dnorm(10,10), #starts at the overall mean
+    bR ~ dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d)
+
+
+
+#compute percentile interval of mean
+#define sequence of weights to compute predictions for! 
+#these values will be on the horizontal axis
+M.seq <- seq(from=-3, to = 3.5, length.out = 30) 
+
+#use link to compute mu
+#for each sample from posterior
+#and for each weight in weight.seq
+mu <- link(m5.2, data = data.frame(Marriage.s=M.seq))
+mu.PI <- apply(mu, 2, PI)
+mu.mean <- apply(mu, 2, mean)
+
+#visualize it
+#show the first 100 values in the distribution of mu at each weight value  
+#use type="n" to hide raw data
+plot(Divorce ~ Marriage.s, data=d, col= rangi2)
+#plot the MAP line, aka the mean mu for each median age marriage
+lines(M.seq, mu.mean)
+#plot a shaded region for 89%  PI
+shade(mu.PI, M.seq)
+
+
+```
+  plus precis thingie
+```{r}
+precis(m5.2,corr = TRUE)
+```
+  This shows an increase of 0.64 divorces for every additional standard deviation of marriage rate (1.67 - sigma) -- this relationship isnt as strong as the previous one.... i dunno, it says sigma 3.8 in the book
+  
+  Comparing parameter means between different bivariate regressions is not a way to decide which predictor is better
+    both predictors could provide independent value
+    they could be redundant
+    one could eliminate the value of the other
+    
+    -> build the multivariate model to measur epartial value of each predictor
+    it will answer questions:
+      1) after i already know marriagerate, what additional value is there in also knowing         age at marriage
+      2) After I already know age at marriage, what additional value is there in also knowing
+      marriage rate
+    parameter estimates to each predictor are the (often not transparent) answers
+    
+      5.1.1. Multivariate notation
+      multivariate models add more parameters and variables to the definition of mui
+      The strategy:
+        1) nominate the predictor variables you want in the linear model of the mean
+        2) for each predictor, make a parameter that will measure its association with the outcome 
+        3) multiply the parameter by the variable and add that term to the linear model
+        
+      e.g.this model that predicts divorce rate, using both marriage rate and age at marriage
+      Di ~ Normal(mui,sigma)          [likelihood]  Di - the divorce rate for State i
+      mui = alpha + betaR*Ri+betaA*Ai [linear model] Ai - State i's median age at mariage
+      alpha ~ Normal(10,10)           [alpha prior]
+      betaR ~ Normal(0,1)             [betaR prior]     
+      betaA ~ Normal(0,1)             [betaA prior]
+      sigma ~ Uniform(0,10)           [sigma prior]
+      
+      R stands for rate, A stands for Age
+      
+      Assumption: mui = alpha + betaR*Ri+betaA*Ai means:
+      the expected outcome for any State with marriage rate Ri and median age at marriage Ai
+      is the sum of three independent terms:
+      1) a constant: aplha. Every State gets this
+      2) the product of the marriage rate, Ri, and the coefficient betaR - it measures the
+      association between marriage rate and divorce rate
+      3) similar, but it measures the association between age at marriage and divorce rate
+      
+      + reads like "or", indicates independent associations, which may be purely statistical or rather causal
+      
+      The linear model reads like: "A State's divorce rate can be a function of its marriage rate OR its median age at marriage"
+      
+      5.1.2. Fitting the model
+      just expand the linear model..
+      Di ~ Normal(mui,sigma)          [likelihood]  Di - the divorce rate for State i
+      mui = alpha + betaR*Ri+betaA*Ai [linear model] Ai - State i's median age at mariage
+      alpha ~ Normal(10,10)           [alpha prior]
+      betaR ~ Normal(0,1)             [betaR prior]     
+      betaA ~ Normal(0,1)             [betaA prior]
+      sigma ~ Uniform(0,10)           [sigma prior]
+```{r}
+#fit the model
+m5.3<- map(
+  alist(
+    Divorce~dnorm(mu,sigma),
+    mu<- a + bR *Marriage.s+ bA*MedianAgeMarriage.s, #linear model
+    a ~ dnorm(10,10),
+    bR ~ dnorm(0,1), 
+    bA ~ dnorm(0,1), 
+    sigma~dunif(0,10)
+  ),
+  data = d)
+
+precis(m5.3)
+
+```
+      bR: the posterior mean for marriage rate is now close to zero, with plenty of probability of both sides of zero
+      bA: the posterior mean for age at marriage has gotten slightly farther from zero, but is essentially unchanged 
+      
+      visualize the posterior distribution estimates:
+```{r}
+plot(precis(m5.3))
+```
+      MAP values shown by the points, the percentile intervals by the horizontal lines
+      Interpretation: Once we know median age at marriage for a State, there is little or no additional predictive power in also knowing the rate of marriage in that State
+      
+      How did the model achieve that result??
+      
+      5.1.3. Plotting multivariate posteriors
+      you need more plots!
+      approach: learn to compute whatever you need from the model
+      three types of interpretive plots:
+        1)Predictor residual plots: show the outcome against residual predictor values
+        2)Counterfactual plots: show the implied predictions for imaginary experiments in which the different predictor variables can be changed independently of one another
+        3)Posterior prediction plots: show model-based predictions against raw data, or otherwise display the error in the prediction
+        
+          5.1.3.1. Predictor residual plots
+          a predictor variable residual - the average prediction error when we use all of the other predictor variables to model a predictor of interest. 
+      
+      
+      
+      
+          
