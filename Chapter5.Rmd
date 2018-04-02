@@ -644,4 +644,71 @@ shade(mu.PI, M.seq)
 ```
              
       the line showing 89% interval of the mean, and 89% prediction interval (gray shaded area) 
-        
+      A small positive correlation remains between divorce rate and Waffle House, despite already controlling for marriage rate and age at maarriage ----- this does not mean that the correlation is real, there basically always will be possible to find spurious correlations with remaining correlation, after controlling for all meaningful predictors you included before..
+  
+  
+------------------------------------------------------------------------------------  
+      
+
+  5.2. Masked relationship
+  Multiple predictor variables are useful for knocking out spurious association
+  
+  Another reason to use more than one predictor: to measure the direct influences of multiple factors on an outcome, when none of those influences is apparent from bivariate relationships
+        this kind of problem: two predictor variables are correlated with one another, but one of
+        them is positively correlated with the outcome and the other is negatively correlated with it
+  
+  the milk data 
+```{r}
+library(rethinking)
+data(milk)
+d<- milk
+str(d)
+```
+  A popular hypothesis: the primates with larger brains produce more energetic milk, so that brains can grow quickly
+  data variables:
+  kcal.per.g: Kilocalories of energy per gram of milk
+  mass: Average female body mass, in kg
+  neocortex.perc: The percent of total brain mass that is neocortex mass
+  
+  Question: to what extent energy content of milk is related to the neocortex percent of the brain
+    We'll need female body mass to see the masking that hides the relationships among the variables
+    
+  The simple bivariate regression between kcal and neocortex %
+```{r}
+m5.5 <- map(
+  alist(
+    kcal.per.g~dnorm(mu,sigma),
+    mu<- a + bn *neocortex.perc, #linear model
+    a ~ dnorm(0,100),
+    bn ~ dnorm(0,1), 
+    sigma~dunif(0,1)
+  ),
+  data = d)
+```
+  the error cause the missing values in neocortex.perc
+  fixed:
+```{r}
+dcc <- d[complete.cases(d),]
+```
+  just 17 observations, it dropped 12. It's good if we know that we drop smth, so more automated models like glm are dangerous in that sense
+
+```{r}
+#fit the model on new dataframe
+m5.5 <- map(
+  alist(
+    kcal.per.g~dnorm(mu,sigma),
+    mu<- a + bn *neocortex.perc, #linear model
+    a ~ dnorm(0,100),
+    bn ~ dnorm(0,1), 
+    sigma~dunif(0,1)
+  ),
+  data = dcc)
+
+#take a look at the quadratic approximate posterior
+precis(m5.5, digits = 3)
+```
+  
+  
+  
+      
+      
