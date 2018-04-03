@@ -707,8 +707,225 @@ m5.5 <- map(
 #take a look at the quadratic approximate posterior
 precis(m5.5, digits = 3)
 ```
+  the posterior for beta n is very small, so we added digits=3 to see that it's not exactly zero
+  A change from the smallest neocortex percent (55%) in data to the largest (76%) would result in an expected change only:
+```{r}
+coef(m5.5)["bn"]*(76-55)
+```
+  less than 0.1 kcal. The kcal in the data range from less than 0.5 to more than 0.9 per gram, so this association is not so impressive
+  it's also not precise, the 89% interval of parameter extends a good distance of both sides of zero
+```{r}
+#fit the model on new dataframe
+m5.5 <- map(
+  alist(
+    kcal.per.g~dnorm(mu,sigma),
+    mu<- a + bn *neocortex.perc, #linear model
+    a ~ dnorm(0,100),
+    bn ~ dnorm(0,1), 
+    sigma~dunif(0,1)
+  ),
+  data = dcc)
+
+#seq and pred.data for the predictor
+np.seq <- 0:100
+pred.data <- data.frame(neocortex.perc=np.seq)
+
+mu <- link(m5.5, data=pred.data, n=1e4)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+#plot
+plot(kcal.per.g ~ neocortex.perc, data=dcc, col=rangi2,
+     xlab="Neocortex percent", ylab="Energy content of milk")
+abline(m5.5)
+#plot a shaded region for 89%  PI
+shade(mu.PI, np.seq)
+
+#plot2, same but different
+plot(kcal.per.g ~ neocortex.perc, data=dcc, col=rangi2,
+     xlab="Neocortex percent", ylab="Energy content of milk")
+lines(np.seq,mu.mean)
+lines(np.seq, mu.PI[1,], lty=2)
+lines(np.seq, mu.PI[2,], lty=2)
+
+```
+  The MAP line wis weakly positive, but it's highly imprecise.
+    i.e. a lot of mildly positive and negative slopes are plausible, given this model and these data
   
+  Now consider mass as a predictor, take log transofrmed measurements
+    Scaling measurements like body mass are related by magnitudes to other variables
+    Taking the log of a measure translates the measure into magnitudes
+    
+    here: We suspect that the magnitude of a mother's body is related to milk energy, in a linear fashion -> we use the logarithm of body mass
+```{r}
+#create a new column
+dcc$log.mass <- log(dcc$mass)
+
+#fit the model
+m5.6 <- map(
+  alist(
+    kcal.per.g~dnorm(mu,sigma),
+    mu<- a + bm *log.mass, #linear model
+    a ~ dnorm(0,100),
+    bm ~ dnorm(0,1), 
+    sigma~dunif(0,1)
+  ),
+  data = dcc)
+
+precis(m5.6)
+
+#seq and pred.data for the predictor
+lm.seq <- -30:100
+pred.data <- data.frame(log.mass=lm.seq)
+
+mu <- link(m5.6, data=pred.data, n=1e4)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+#plot
+plot(kcal.per.g ~ log.mass, data=dcc, col=rangi2,
+     xlab="Log mass", ylab="Energy content of milk")
+abline(m5.6)
+#plot a shaded region for 89%  PI
+shade(mu.PI, lm.seq)
+
+#plot2, same but different
+plot(kcal.per.g ~ log.mass, data=dcc, col=rangi2,
+     xlab="Log mass", ylab="Energy content of milk")
+lines(lm.seq,mu.mean)
+lines(lm.seq, mu.PI[1,], lty=2)
+lines(lm.seq, mu.PI[2,], lty=2)
+```
+   Log mass is negatively correlated with kilocalories, the influence seem stronger than that of neocortex percent, but in the opposite direction <- quite uncertain though
   
+  But what happens when we add both predictors at the same time to the regression
+    The math form of the multivariate model:
+
+      ki ~ Normal(mui,sigma)          [likelihood] ki - the kcal.per.g for species i
+      mui = alpha +beta n *ni +beta m *log(mi) [linear model] ni - Species i's neocortex %, mi - mass
+      alpha ~ Normal(0,100)            [alpha prior]
+      beta n ~ Normal(0,1)             [beta prior for neocortex% predictor]
+      beta m ~ Normal (0,1)            [beta prior for mass predictor]
+      sigma ~ Uniform(0,10)            [std dev prior]
+      
+```{r}
+#fit the model
+m5.7 <- map(
+  alist(
+    kcal.per.g~dnorm(mu,sigma),
+    mu<- a +bn*neocortex.perc+ bm *log.mass, #linear model
+    a ~ dnorm(0,100),
+    bn ~ dnorm(0,1),
+    bm ~ dnorm(0,1), 
+    sigma~dunif(0,1)
+  ),
+  data = dcc)
+
+precis(m5.7)
+```
+   Inocorporating both predictor variables in the regression increased the estimated association of both with the outcome    
+   bn <- the posterior mean for the association of neocortex % has increased more than sixfold, its 89% interval is now entirely above 0
+   bm <- the posterior mean for the association of log body mass is more strongly negative
+   
+   Counterfactual plots (using mean log body mass) showing only how predicted energy varies as a function of  neocortex percent
+```{r}
+#fit the model
+#m5.7 <- map(
+#  alist(
+#    kcal.per.g~dnorm(mu,sigma),
+#    mu<- a +bn*neocortex.perc+ bm *log.mass, #linear model
+#    a ~ dnorm(0,100),
+#    bn ~ dnorm(0,1),
+#    bm ~ dnorm(0,1), 
+#    sigma~dunif(0,1)
+#  ),
+#  data = dcc)
+
+#fixate the mean log mass to be a constant 
+mean.log.mass <- mean(log (dcc$mass))
+
+#sequence of possible values for neocortex %
+np.seq<- 0:100
+pred.data <-data.frame(
+  neocortex.perc=np.seq,
+  log.mass=mean.log.mass
+)
+
+mu <- link(m5.7, data=pred.data, n=1e4)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+#plot
+plot(kcal.per.g ~ neocortex.perc, data=dcc, type="n",
+     xlab="Neocortex %", ylab="Energy content of milk")
+mtext("Log body mass = constant average of log body mass")
+lines(np.seq, mu.mean)
+#plot a shaded region for 89%  PI
+shade(mu.PI, np.seq)
+
+#plot2, same but different, border lines instead of shaded area
+plot(kcal.per.g ~ neocortex.perc, data=dcc, type="n",
+     xlab="Neocortex %", ylab="Energy content of milk")
+mtext("Log body mass = constant average of log body mass")
+lines(np.seq,mu.mean)
+lines(np.seq, mu.PI[1,], lty=2)
+lines(np.seq, mu.PI[2,], lty=2)
+
+```
+   The counterfactual plot for the multivariate milk energy content model, m5.7. The plot shows the change in predicted values of mean energy content of milk across values of neocortex percentage, constantly holding the log body mass at its average (mean value, i.e. 1.499).
+   
+```{r}
+#fit the model
+#m5.7 <- map(
+#  alist(
+#    kcal.per.g~dnorm(mu,sigma),
+#    mu<- a +bn*neocortex.perc+ bm *log.mass, #linear model
+#    a ~ dnorm(0,100),
+#    bn ~ dnorm(0,1),
+#    bm ~ dnorm(0,1), 
+#    sigma~dunif(0,1)
+#  ),
+#  data = dcc)
+
+#fixate the mean neocortex perc to be a constant 
+mean.neocortex.perc <- mean(dcc$neocortex.perc)
+
+#sequence of possible values for the predictor on x axis (log body mass)
+lm.seq<- seq(from=-4, to=4, length.out = 100)
+
+#create dataframe for counterfactual plot: logmass is all possible log mass values on x axis, neocortex perc is constant, which is unrealistic
+pred.data2 <-data.frame(
+  neocortex.perc=mean.neocortex.perc,
+  log.mass=lm.seq
+)
+
+mu <- link(m5.7, data=pred.data2, n=1e4)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+#plot
+plot(kcal.per.g ~ log.mass, data=dcc, type="n",
+     xlab="Log body mass", ylab="Energy content of milk")
+mtext("Neocortex % = constant average of neocortex %")
+lines(lm.seq, mu.mean)
+#plot a shaded region for 89%  PI
+shade(mu.PI, lm.seq)
+
+#plot2, same but different, border lines instead of shaded area
+plot(kcal.per.g ~ log.mass, data=dcc, type="n",
+     xlab="Log body mass", ylab="Energy content of milk")
+mtext("Neocortex %= constant average of neocortex %")
+lines(lm.seq,mu.mean)
+lines(lm.seq, mu.PI[1,], lty=2)
+lines(lm.seq, mu.PI[2,], lty=2)
+```
+   
   
+  Adding neocortex and body mass to the same model led to larger estimated effects of both
+  Why?
+    two variables correlated with the outcome, but in different directions
+    + both of the explanatory variables are positively correlated with one another -> they tend to cancel one another out
+    <- another case in which regression automatically finds the most revealing cases and uses them to produce estimates
+      e.g. The regression model asks if species that have high neocortex percent for their body mass have higher milk energy 
       
       
