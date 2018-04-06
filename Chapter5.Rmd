@@ -929,3 +929,53 @@ lines(lm.seq, mu.PI[2,], lty=2)
       e.g. The regression model asks if species that have high neocortex percent for their body mass have higher milk energy 
       
       
+  5.3. When adding variables hurts
+  why not just fit a model that includes all available predictors in the dataframe?
+    Reasons:
+    1) multicolinearity: very strong correlation between 2+ predictor variables
+      -> posterior dstrb will show a very large range of plausible parameter values
+    2) post-treatment bias: statistically controlling for consequences of a causal factor
+    ->
+    3) overfitting
+    
+    
+    5.3.1. Multicollinear logs
+      simulation: individual's height ~ the length of left leg + the length of right leg
+```{r}
+# number of individuals
+N <- 100
+
+#sim total height of each
+height <- rnorm(N,10,2) #generate N normal random numbers with arguments mean and sd
+
+#leg as proportion of height
+leg_prop <- runif(N,0.4,0.5) #generate N uniform random numbers lie in the interval (min, max) <- individual's legs are 45% of the height (on average in these data)
+
+#sim left leg as proportion + error
+leg_left <- leg_prop*height + rnorm( N , 0 , 0.02 )
+
+#sim right leg as proportion + error
+leg_right <- leg_prop*height + rnorm( N , 0 , 0.02 )
+
+#combine into data frame
+d <- data.frame(height,leg_left,leg_right)
+
+#fit a model
+m5.8 <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + bl*leg_left + br*leg_right ,
+    a ~ dnorm( 10 , 100 ) ,
+    bl ~ dnorm( 2 , 10 ) , #beta measures association of a leg with height, should be around the avg height/ 45% of avg height (10/4.5 = 2.2ish)
+    br ~ dnorm( 2 , 10 ) , 
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+precis(m5.8)
+```
+  Looks bad, man. +different from the book (cause simulation variance)
+```{r}
+plot(precis(m5.8))
+```
+  The model fit correct, but why does the posterior look so weird?   
+      
