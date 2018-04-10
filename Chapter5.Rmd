@@ -978,4 +978,36 @@ precis(m5.8)
 plot(precis(m5.8))
 ```
   The model fit correct, but why does the posterior look so weird?   
+    The posterior is the answer: what is the value of knowing length of the right leg, when you already know the left?
+```{r}
+post <- extract.samples(m5.8)
+plot(bl~br, post, col=col.alpha(rangi2, 0.1), pch=16)
+```
+    Posterior distribution of the association of each leg with height,from model 5.8
+    Since both variables contain almost identical information, the posetrior is a narrow ridge of negatively correlated values
+    When bl is large, then br must be small
+    two predictors with identical information -> there will be practically infinite possible combinations of parameters  br and bl that produce the same predictions
+    
+    yi ~ Normal(mui, sigma)
+    mui= apha+ beta1 *xi + beta2*xi        left leg - xi, right leg is the same,so it's also xi
+    
+    so computer does this, it factors xi out of each term:
+    yi ~ Normal(mui, sigma)
+    mui= apha+ (beta1+ beta2)*xi 
+    
+    now beta 1 and beta 2 influnce mu, only as a sum, they cannot be pulled apart
+    -> infinite combinations of beta1 and beta2 that makes their sum close to actual association of x with y
+    
+    compute the posterior of the sum of beta 1 and beta 2
+```{r}
+#find the sum
+sum_blbr <- post$bl+post$br
+
+#plot posterior distribution of the sum
+dens(sum_blbr, col=rangi2, lwd=2, xlab="sum of bl and br")
+
+```
+    The posterior distribution of the sum of the two parameters is centered on the proper association of either leg with height
+    
+    
       
