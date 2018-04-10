@@ -1008,6 +1008,154 @@ dens(sum_blbr, col=rangi2, lwd=2, xlab="sum of bl and br")
 
 ```
     The posterior distribution of the sum of the two parameters is centered on the proper association of either leg with height
+    The density plot of posterior distribution (with the mean of a bit of above 2, and small sd) is basically the same, as the posterior of a regression that has only one of the leg variables
+```{r}
+#fit a model
+m5.9 <- map(
+  alist(
+    height ~ dnorm( mu , sigma ) ,
+    mu <- a + bl*leg_left ,
+    a ~ dnorm( 10 , 100 ) ,
+    bl ~ dnorm( 2 , 10 ) , #beta measures association of a leg with height, should be around the (avg height/ 45% of avg height) = (10/4.5 = 2.2ish)
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+precis(m5.9)
+
+#extract samples
+post <- extract.samples(m5.9)
+
+
+#plot posterior distribution of the sum
+dens(post$bl, col=rangi2, lwd=2, xlab="bl")
+```
+    basically the same estimates, as the posterior of the sum of left and right
+    
+    The lesson: When two predictor variables are verys trongly correlated, including both in a model may lead to confusion
+    The posterior distribution is not wrong, it just can't answer the question with these data
+    
+    5.3.2.Multicollinear milk
+    we might miss the fact that predictors are highly correlated in the real data -> we may mistakenly read the posterior distribution to say that neither predictor is important 
+    
+```{r}
+#primate milk data again 
+data(milk)
+
+d <- milk
+```
+    
+    We try to model the total energy content of the milk, kcal.per.g, by using perc.fat and perc.lactose <- natural case of multicollinearity 
+    
+    Two bivariate regressions first
+```{r}
+#fit a model
+#kcal.per.g regressed on perc.fat
+m5.10 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bf*perc.fat ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    bf ~ dnorm( 0 , 1 ) , #beta measures association of a fat perc with energy content 
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+
+#kcal.per.g regressed on perc.lactose
+m5.11 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bl*perc.lactose ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    bl ~ dnorm( 0 , 1 ) , #beta measures association of a fat perc with energy content 
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+
+precis(m5.10, digits = 3)
+precis(m5.11, digits = 3)
+
+```
+    The posterior mean for bf (the association of percent fat with milk energy) is 0.01, with 89% interval [0.008,0.012]
+    The posterior mean for bl (the association of percent lactose with energy) is -0.01, with 89% interval [-0.012,-0.009]
+    
+      These posterior means are mirror images of one another (bf mean is as positive, as bl mean is negative)
+      Both are narrow posterior distributions liýing on either side of zero
+    
+  Slopes (parameters for beta values): small in absolute value 
+      Are these associations really good for modeling energy content of milk?
+      Yes! The predictor variables are percentages, potentially large values
+      The absolute magnitude of regression slopes is not always meaningful 
+        <- because the influence on prediction depends upon the product of the parameter and the data
+        you gotta compute+plot predictions or standardize all predictors -> probably still plot implied predictions 
+        
+  -> Strong association of each predictor with the outcome -> both variables are reliable predictors of total energy in milk, across species
+    the more fat - the more energy
+    the more lactose - the fewer kcal in milk 
+    
+    Now together:
+```{r}
+#kcal.per.g regressed on perc.fat and perc.lactose
+m5.12 <- map(
+  alist(
+    kcal.per.g ~ dnorm( mu , sigma ) ,
+    mu <- a + bf*perc.fat+ bl*perc.lactose ,
+    a ~ dnorm( 0.6 , 10 ) ,
+    bf~ dnorm( 0 , 1 ) ,
+    bl ~ dnorm( 0 , 1 ) , #beta measures association of a fat perc with energy content 
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+
+precis(m5.12, digits = 3)
+```
+    The posterior means of both bf anf bl are closer to zero. (especially bf)
+    StdDevs are twice as large as in bivariate regressions
+    
+    <- The variables perc.fat and perc.lactose contain much of the same information.They are substitutes for one another 
+    You include both in the same model -> the posterior distribution ends up describing a long ridge of combinations of bf and bl that are equally possible 
+    Fat and lactose form essentially a single axis of variation (see pairs plot)
+```{r}
+#pairs plot to see how perc.fat and per.lactose for a single axis of variation
+pairs( ~ kcal.per.g + perc.fat + perc.lactose, data=d, col=rangi2)
+```
+    Along diagonal: variables are labeled
+    In each scatterplot off the diagonal: the vertical axis is the variable labeled on the same row, the horizontal axis is the variable labeled in the same column
+    
+    First row. 
+     Left: kcal.per.g. (vertical) against perc.fat (horizontal) - positive correlation
+     Right: kcal.per.g (vertical) against per.lactose (horizontal) - negative correlation
+    
+    Middle row:
+      Right: scatter of percent fat (vertical) against percent lactose (horizontal)
+            the points line up almost entirely along a straight line ->
+            -> these variables are so strongly negatively correlated, they are nearly redundant (we can omit one of them without loss of information)
+            
+    
+    A pairs plot of the total energy, perecent fat, and percent lactose variables from the primate milk data.     Percent fat and percent lactose are strongly negatively correlated with one another, providing mostly the same information.
+    Either helps in predicting kcal.per.g, but neither helps much once you already know the other
+    
+    Compute correlation:
+```{r}
+#compute correlation between two predictor variables
+cor(d$perc.fat, d$perc.lactose)
+```
+    A pretty strong correlation 
+    It's hard to say how strong the correlation has to get before we should worry about it.. <- Pretty high
+    Matters!!: The correlation that remains after accounting for any other predictors
+    
+    Let's address the cor question directly: a little simulation experiment
+    we have only kcal.per.g and perc.fat 
+```{r}
+#we have only kcal.per.g and perc.fat
+#construct a random predictor variable - x, that is correlated  with per.fat at predetermined level 
+#code on p 150
+
+
+
+```
+    
+      
+    
     
     
       
