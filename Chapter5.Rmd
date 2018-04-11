@@ -1150,12 +1150,115 @@ cor(d$perc.fat, d$perc.lactose)
 #construct a random predictor variable - x, that is correlated  with per.fat at predetermined level 
 #code on p 150
 
+#write a function that generates correlated predictors
+sim.coll <- function( r=0.9) {
+  d$x <- rnorm(nrow(d), mean= r*d$perc.fat,
+               sd=sqrt((1-r^2)*var(d$perc.fat)))
+  m<- lm(kcal.per.g ~ perc.fat + x, data=d) #fit a model
+  sqrt(diag(vcov(m) ))[2] #return std dev of parameter (sd of the posterior dstrb for the slope btwn fat and kcal)
+}
 
-
+#repeatedly call the previous function, with diffrent degrees of correlation as an input, collect the results
+rep.sim.coll <- function(r=0.9, n=100) {
+  stddev <- replicate(n, sim.coll(r))
+  mean(stddev)
+}
+r.seq <- seq(from=0, to=0.99, by=0.01) #define all the correlation values
+stddev <- sapply(r.seq, function(z) rep.sim.coll(r=z,n=100)) #generate 100 regressions for each value in r.seq, return the avg std dev from them
+plot(stddev~ r.seq, type= "l", col=rangi2, lwd=2, xlab="correlation")
 ```
+    The effect of correlated predictor variables on the narrowness of the posterior dstrb
+    y-axis: std dev of the posterior dstrb of the slope
+    x-axis: the correlation btwn the predictor of interest and another predictor added to the model
+    The correlation increases -> The std dev inflates (it approaches infintiy as correlation approaches 1)
+      When variables are not correlated , the stddev of the posterior is small -> it's a narrow range of most plausible parameter values
     
+    Multicolinearity - the best we can do is be aware of it
+      anticipate by checking predictors against each other in a pairs plot
       
+    You can't know from a table of correlations nor a matrix of scatterplots whether multicolinearity will prevent you from including sets of variables in the same model
+    Diagnose the problem by looking for a big inflation of stddev when both variables are included in the same model
     
+    Dealing with collinear variables:
+      some fields - data reduction procedures, e.g. principle components, factor analysis -> then use the components/factors as predictor variables
+                so hard to interpret tho!!!
+                component might not tell immediately how any real measurement is associated with the outcome
+      A defensive approach - show that you get the same inferences and predictions by using any one of the highly correlated variables
+      Multicollinearity - a Non-identifiability family problem 
+                a parameter is non-identifiable -> the structure of the data and model do not make it possible to estimate the parameter's value 
+                sometimes it's a mistake in coding a model
+                many important types of models present weakly or non-indentifiable parameters even if the code is alright
+                a very wide posterior dstrb - the available data does not containy much info about a parameter of interest 
+                it's usually helpful to check covariation among parameters, expecially when intervals are extremely wide, to avoid misinterpretation of the model output
+                
+
+    5.3.3. Post-treatment bias
+      Omitted varianle bias - mistaken inferences that arise from omitting predictor variables
+      "post-treatment" - from experimental designs, and observational studies
+      
+      You want to know the difference in growth under different anti-ffungal soil treatments (fungus tends to reduce the growth)
+      goal: make a causal inference about the treatment -> you shouldn't include the presence of fungus, bacause it is a post-treatment effect
+      
+```{r}
+#number of plants
+N <- 100
+
+#simulate initial heights 
+h0 <- rnorm(N,10, 2)
+
+#assign treatments and simulate fungus and growth
+treatment <- rep(0:1, each=N/2)
+fungus <- rbinom(N, size = 1, prob = 0.5-treatment*0.4)
+h1 <- h0 + rnorm(N, 5 - 3*fungus)
+
+#compose a clean data frame
+d <- data.frame(h0=h0, h1=h1, treatment=treatment, fungus=fungus)
+
+#fit a model that includes all of the available variables
+m5.13 <- map(
+  alist(
+    h1 ~ dnorm( mu , sigma ) ,
+    mu <- a + bh*h0+ bt*treatment + bf*fungus ,
+    a ~ dnorm( 0 , 100 ) ,
+    c(bh,bt,bf) ~ dnorm( 0 , 10 ) ,
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+precis(m5.13)
+```
+    simulation variance bla bla bla - every sample is special
+    bt - treatment had very little effect on growth
+    bt - fungus! and bh -h0 (initial height) have important effects
+    
+    but we know that treatment matters - we simulated it this way, what happened?
+      fungus is a consequence of treatment
+        Once we already know whether or not a plant developed fungus, does soil treatment matter? No.
+        Treatment has its effects on growththrough reducing fungus.
+        Design of the experiment: we want to know the impact of TREATMENT on growth -> we should omit the post-treatment variable fungus
+```{r}
+#fit a model without fungus variable
+m5.14 <- map(
+  alist(
+    h1 ~ dnorm( mu , sigma ) ,
+    mu <- a + bh*h0+ bt*treatment ,
+    a ~ dnorm( 0 , 100 ) ,
+    c(bh,bt) ~ dnorm( 0 , 10 ) ,
+    sigma ~ dunif( 0 , 10 )
+    ) ,
+  data=d )
+precis(m5.14)
+```
+   Now bt - impact of treatment on growth - is strong and positive (as it should be)
+   makes sense: controling for pre-treatment differences (like initial height) that might mask the causal influence of treatment
+   doesn't: including post-treatment variables that can actually mask the treatment itself
+   
+   it is easier with experimental design, than observational studies
+   
+   does not 
+    
+    
+                
+                
     
     
       
