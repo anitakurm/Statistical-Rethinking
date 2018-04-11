@@ -1254,8 +1254,28 @@ precis(m5.14)
    
    it is easier with experimental design, than observational studies
    
-   does not 
-    
+  5.4. Categorical variables
+  taxonomic group - categorical variable (e.g. sex, developmental status, geogrphic region) - factors
+  How are these variables included in a model?
+  Understand that to be able to easily interpret estimates for categorical variables 
+    5.4.1 Binary categories
+    just two categories: sex
+```{r}
+data("Howell1")
+d <- Howell1
+str(d)
+```
+    male variable - new predictor - an example of a dummy variable
+    Dummy variables are devices for encoding categories into quantitative models
+      the effect of a dummy var - turn a parameter on for those cases in the category
+    1 -male, 0 - female or 1 -female, 0 - male <- YOU NEED TO REMEMBER IN ORDER TO INTERPRET
+          
+          
+    5.4.2
+    5.4.3
+    5.4.4
+  
+  5.5. Ordinary least squares and lm
     
                 
                 
